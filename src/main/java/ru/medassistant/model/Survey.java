@@ -23,7 +23,7 @@ public class Survey {
     @ToString.Exclude
     private Patient patient;
 
-    @Column(nullable = false, length = 50)
+    @Column(nullable = false)
     private String status;
 
     @Column(length = 10000)
@@ -45,7 +45,7 @@ public class Survey {
     @Column(length = 5000)
     private String aiGeneratedQuestionsText;
 
-    @OneToMany(mappedBy = "survey", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @OneToMany(mappedBy = "survey", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @ToString.Exclude
     private List<SurveyAnswer> answers = new ArrayList<>();
 

@@ -48,17 +48,11 @@ public class PatientController {
         logger.info("Registering patient: {} {}", patient.getFirstName(), patient.getLastName());
 
         try {
-            Optional<Patient> existing = patientRepository.findByPhone(patient.getPhone());
+            // Сохраняем пациента (всегда нового)
+            Patient savedPatient = patientRepository.save(patient);
+            logger.info("Patient created with id: {}, phone: {}", savedPatient.getId(), savedPatient.getPhone());
 
-            Patient savedPatient;
-            if (existing.isPresent()) {
-                savedPatient = existing.get();
-                logger.info("Patient found by phone: {}", savedPatient.getId());
-            } else {
-                savedPatient = patientRepository.save(patient);
-                logger.info("Patient created with id: {}", savedPatient.getId());
-            }
-
+            // Получаем активный сценарий
             List<Scenario> scenarios = scenarioRepository.findByIsActiveTrueOrderByCreatedAtDesc();
             Scenario scenario;
             if (scenarios.isEmpty()) {
@@ -69,8 +63,9 @@ public class PatientController {
                 logger.info("Using existing scenario: id={}, name={}", scenario.getId(), scenario.getName());
             }
 
+            // Создаём НОВЫЙ опрос для этого пациента
             Survey survey = surveyService.createSurvey(savedPatient.getId(), scenario.getId());
-            logger.info("Survey created with id: {}", survey.getId());
+            logger.info("Survey created with id: {} for patient id: {}", survey.getId(), savedPatient.getId());
 
             return "redirect:/patient/survey/" + survey.getId();
 
@@ -101,11 +96,15 @@ public class PatientController {
 
             // Парсим вопросы доктора из БД
             List<String> doctorQuestions = List.of();
-            if (scenario.getDoctorQuestionsText() != null && !scenario.getDoctorQuestionsText().trim().isEmpty()) {
-                doctorQuestions = parseQuestions(scenario.getDoctorQuestionsText());
-                logger.info("Loaded {} doctor questions from DB", doctorQuestions.size());
+            String doctorQuestionsText = scenario.getDoctorQuestionsText();
+
+            logger.info("Raw doctorQuestionsText from DB: [{}]", doctorQuestionsText);
+
+            if (doctorQuestionsText != null && !doctorQuestionsText.trim().isEmpty()) {
+                doctorQuestions = parseQuestions(doctorQuestionsText);
+                logger.info("✅ Parsed {} doctor questions", doctorQuestions.size());
             } else {
-                logger.warn("No doctor questions in scenario! Using empty list.");
+                logger.warn("⚠️ No doctor questions in scenario!");
             }
             model.addAttribute("doctorQuestions", doctorQuestions);
 
@@ -116,8 +115,11 @@ public class PatientController {
                 logger.info("Loaded {} AI questions", aiQuestions.size());
             }
 
-            logger.info("Survey page opened successfully. doctorQuestions={}, allowAiQuestions={}",
-                    doctorQuestions.size(), scenario.getAllowAiQuestions());
+            logger.info("Survey page opened. Patient: {} {}, doctorQuestions={}, allowAiQuestions={}",
+                    survey.getPatient().getFirstName(),
+                    survey.getPatient().getLastName(),
+                    doctorQuestions.size(),
+                    scenario.getAllowAiQuestions());
 
             return "patient/survey";
 
@@ -202,11 +204,14 @@ public class PatientController {
         }
     }
 
+    /**
+     * Парсит вопросы из текста (разделитель - ДВОЙНОЙ перенос строки)
+     */
     private List<String> parseQuestions(String text) {
         if (text == null || text.trim().isEmpty()) {
             return List.of();
         }
-        return Stream.of(text.split("\\n\\n+"))
+        return Stream.of(text.split("\\r?\\n\\r?\\n+"))
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
                 .collect(Collectors.toList());

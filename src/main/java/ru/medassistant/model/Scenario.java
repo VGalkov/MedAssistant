@@ -40,11 +40,9 @@ public class Scenario {
     @Column
     private LocalDateTime updatedAt;
 
-    // ✅ Поле для вопросов доктора (текст, каждый вопрос с новой строки)
     @Column(length = 10000)
     private String doctorQuestionsText;
 
-    // ✅ Флаг: разрешить ИИ добавить 3 уточняющих вопроса после ответов пациента
     @Column
     private Boolean allowAiQuestions = false;
 

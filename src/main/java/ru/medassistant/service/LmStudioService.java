@@ -42,20 +42,13 @@ public class LmStudioService {
         return callLlm(prompt, 0.2);
     }
 
-    public String generateNextQuestion(List<Map<String, String>> previousAnswers, String scenarioContext) {
-        String prompt = buildNextQuestionPrompt(previousAnswers, scenarioContext);
-        return callLlm(prompt, 0.7);
-    }
-
     /**
      * Генерация 3 уточняющих ИИ-вопросов НА ОСНОВЕ ответов пациента
-     * Вызывается после того как пациент ответил на вопросы доктора
      */
     public String generateAiClarifyingQuestions(String patientAnswers) {
         String prompt = buildAiQuestionsPrompt(patientAnswers);
         String response = callLlm(prompt, 0.4);
 
-        // Парсим ответ: ожидаем 3 вопроса
         String[] lines = response.split("\n");
         StringBuilder result = new StringBuilder();
         int count = 0;
@@ -117,18 +110,10 @@ public class LmStudioService {
         return """
             Проанализируй текст опроса пациента и структурируй информацию по следующим категориям:
             1. Жалобы (основные симптомы, длительность)
-            2. Анамнез заболевания (когда началось, как развивалось)
+            2. Анамнез заболевания
             3. Сопутствующие заболевания
-            4. Принимаемые препараты (название, дозировка, режим)
+            4. Принимаемые препараты
             5. Аллергии
-            6. Вредные привычки
-
-            Формат вывода:
-            Жалобы: ...
-            Длительность: ...
-            Препараты: ...
-            Аллергии: ...
-            Хронические: ...
 
             Текст пациента:
             %s
@@ -137,26 +122,17 @@ public class LmStudioService {
 
     private String buildRecommendationsPrompt(String originalText, String processedText, String patientHistory) {
         return """
-            Проанализируй опрос пациента и укажи:
-            1. Какие пробелы в анамнезе нужно заполнить?
-            2. Какие уточняющие вопросы нужно задать?
-            3. Есть ли противоречия с историей пациента?
+            Проанализируй опрос пациента и укажи рекомендации для врача.
 
             Оригинал: %s
             Обработано: %s
             История: %s
-
-            Выведи краткий список рекомендаций для врача.
             """.formatted(originalText, processedText, patientHistory != null ? patientHistory : "Нет истории");
     }
 
     private String buildSuspicionPrompt(String originalText, String patientHistory) {
         return """
-            Проанализируй текст ответов пациента на предмет:
-            1. Противоречий внутри текста
-            2. Противоречий с предыдущей историей
-            3. Признаков неопределённости ("наверное", "вроде", "какие-то")
-            4. Признаков возможного сокрытия или выдумывания
+            Проанализируй текст ответов пациента на предмет противоречий.
 
             Текст пациента: %s
             История: %s
@@ -165,19 +141,6 @@ public class LmStudioService {
             """.formatted(originalText, patientHistory != null ? patientHistory : "Нет истории");
     }
 
-    private String buildNextQuestionPrompt(List<Map<String, String>> previousAnswers, String scenarioContext) {
-        return """
-            На основе предыдущих ответов пациента предложи следующий уточняющий вопрос.
-            Контекст сценария: %s
-            Предыдущие ответы: %s
-
-            Сгенерируй один конкретный вопрос на русском языке.
-            """.formatted(scenarioContext, previousAnswers.toString());
-    }
-
-    /**
-     * Промпт для генерации 3 уточняющих вопросов НА ОСНОВЕ ответов пациента
-     */
     private String buildAiQuestionsPrompt(String patientAnswers) {
         return """
             Ты — медицинский ИИ-ассистент. Пациент только что ответил на вопросы доктора.
@@ -185,17 +148,11 @@ public class LmStudioService {
             
             Цели вопросов:
             1. Устранить противоречия в ответах пациента
-            2. Запросить уточнения по важным деталям (локализация, интенсивность, длительность симптомов)
-            3. Выяснить недостающую информацию для постановки предварительного диагноза
+            2. Запросить уточнения по важным деталям
+            3. Выяснить недостающую информацию для диагноза
             
             Ответы пациента:
             %s
-            
-            Требования к вопросам:
-            - Каждый вопрос должен быть конкретным и понятным
-            - Начинай с заглавной буквы, заканчивай вопросительным знаком
-            - Избегай общих фраз, спрашивай о конкретных деталях
-            - Не повторяй уже заданные вопросы
             
             Выведи РОВНО 3 вопроса, каждый с новой строки, без нумерации.
             """.formatted(patientAnswers);

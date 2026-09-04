@@ -51,11 +51,9 @@ public class SurveyService {
         ScenarioQuestion question;
 
         if (questionId != null && questionId > 0) {
-            // Стандартный вопрос из БД
             question = new ScenarioQuestion();
             question.setId(questionId);
         } else {
-            // Вопрос доктора или ИИ - создаём временный объект с текстом
             question = new ScenarioQuestion();
             question.setQuestionText(questionText != null ? questionText : "Вопрос");
             question.setCategory("Дополнительно");
@@ -71,9 +69,6 @@ public class SurveyService {
         surveyRepository.save(survey);
     }
 
-    /**
-     * Перегруженная версия для обратной совместимости
-     */
     public void addAnswer(Long surveyId, Long questionId, String answerText) {
         addAnswer(surveyId, questionId, answerText, null);
     }
@@ -155,9 +150,6 @@ public class SurveyService {
         return surveyRepository.findById(surveyId);
     }
 
-    /**
-     * Сохранение опроса
-     */
     public void saveSurvey(Survey survey) {
         surveyRepository.save(survey);
     }

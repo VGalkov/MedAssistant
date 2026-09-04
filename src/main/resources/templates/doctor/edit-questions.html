@@ -55,16 +55,10 @@
     <div class="scenario-info">
         <h3 th:text="${scenario.name}">Название сценария</h3>
         <p th:if="${scenario.specialty != null}"><strong>Специальность:</strong> <span th:text="${scenario.specialty}"></span></p>
-        <p><strong>Вопросов в сценарии:</strong> <span th:text="${scenario.questions.size()}"></span></p>
     </div>
 
-    <!-- Сообщение об успехе -->
-    <div th:if="${success}" class="success-message">
-        ✅ Изменения сохранены
-    </div>
-    <div th:if="${error}" class="error-message">
-        ❌ <span th:text="${error}"></span>
-    </div>
+    <div th:if="${success}" class="success-message">✅ Изменения сохранены</div>
+    <div th:if="${error}" class="error-message">❌ <span th:text="${error}"></span></div>
 
     <form id="editForm" method="POST" th:action="@{/doctor/scenario/{id}/edit-questions(id=${scenario.id})}">
         <div class="panel">
@@ -90,7 +84,7 @@
                     <div>
                         <label for="allowAiQuestions">🤖 Разрешить ИИ задать 3 уточняющих вопроса</label>
                         <small>
-                            Если включено, после ответов на вопросы доктора ИИ сгенерирует 3 дополнительных уточняющих вопроса на основе ответов пациента
+                            Если включено, после ответов на вопросы доктора ИИ сгенерирует 3 дополнительных уточняющих вопроса
                         </small>
                     </div>
                 </div>
@@ -103,7 +97,6 @@
         </div>
     </form>
 
-    <!-- Информация об ИИ-вопросах -->
     <div class="ai-info">
         <h4>🤖 Как работают ИИ-вопросы</h4>
         <p>
@@ -136,7 +129,6 @@
 </div>
 
 <script>
-    // Автоматическое форматирование текста при вводе
     document.getElementById('doctorQuestionsText').addEventListener('input', function(e) {
         const textarea = e.target;
         const lines = textarea.value.split('\n');

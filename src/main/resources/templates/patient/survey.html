@@ -41,7 +41,6 @@
         <span th:if="${allowAiQuestions}" class="ai-badge">🤖 ИИ включён</span>
     </h1>
 
-    <!-- Сообщение об ошибке если нет вопросов -->
     <div th:if="${#lists.isEmpty(doctorQuestions)}" class="error-box">
         ⚠️ Вопросы ещё не настроены. Пожалуйста, настройте вопросы в панели врача.
     </div>
@@ -74,46 +73,49 @@
     const surveyId = /*[[${survey.id}]]*/ 0;
     const allowAiQuestions = /*[[${allowAiQuestions}]]*/ false;
 
-    // Вопросы - передаём как JSON через th:with
+    // Вопросы доктора - массив строк
     const doctorQuestionsText = /*[[${doctorQuestions}]]*/ [];
+
+    // ИИ-вопросы (если уже сгенерированы)
     const aiQuestionsText = /*[[${aiQuestions}]]*/ [];
 
     console.log('=== Survey Page Loaded ===');
     console.log('surveyId:', surveyId);
     console.log('allowAiQuestions:', allowAiQuestions);
     console.log('doctorQuestionsText:', doctorQuestionsText);
+    console.log('doctorQuestionsText.length:', doctorQuestionsText ? doctorQuestionsText.length : 0);
     console.log('aiQuestionsText:', aiQuestionsText);
 
-    // Формируем вопросы доктора
+    // Формируем вопросы доктора как объекты
     const doctorQuestions = [];
     if (doctorQuestionsText && doctorQuestionsText.length > 0) {
-        doctorQuestionsText.forEach((text, index) => {
+        for (let i = 0; i < doctorQuestionsText.length; i++) {
             doctorQuestions.push({
-                id: 'doctor_' + index,
-                questionText: text,
+                id: 'doctor_' + i,
+                questionText: doctorQuestionsText[i],
                 questionType: 'TEXT',
                 category: 'Вопрос доктора',
                 isAi: false
             });
-        });
+        }
     }
 
     // Формируем ИИ-вопросы (если уже сгенерированы)
     const aiQuestions = [];
     if (aiQuestionsText && aiQuestionsText.length > 0) {
-        aiQuestionsText.forEach((text, index) => {
+        for (let i = 0; i < aiQuestionsText.length; i++) {
             aiQuestions.push({
-                id: 'ai_' + index,
-                questionText: text,
+                id: 'ai_' + i,
+                questionText: aiQuestionsText[i],
                 questionType: 'TEXT',
                 category: 'ИИ-уточнение',
                 isAi: true
             });
-        });
+        }
     }
 
-    console.log('doctorQuestions:', doctorQuestions);
-    console.log('aiQuestions:', aiQuestions);
+    console.log('doctorQuestions (parsed):', doctorQuestions);
+    console.log('aiQuestions (parsed):', aiQuestions);
 
     // Начинаем только с вопросов доктора
     let allQuestions = [...doctorQuestions];
@@ -142,18 +144,17 @@
         const q = allQuestions[index];
         const container = document.getElementById('questionsContainer');
 
-        let inputHtml = `<textarea name="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
+        let inputHtml = '<textarea name="q' + q.id + '" placeholder="Ваш ответ..."></textarea>';
 
         const categoryClass = q.isAi ? 'category-ai' : '';
         const categoryLabel = q.isAi ? '🤖 ИИ-уточнение' : q.category;
 
-        container.innerHTML = `
-            <div class="question">
-                <span class="category ${categoryClass}">${categoryLabel}</span>
-                <h3>${index + 1}. ${q.questionText}</h3>
-                ${inputHtml}
-            </div>
-        `;
+        container.innerHTML =
+            '<div class="question">' +
+                '<span class="category ' + categoryClass + '">' + categoryLabel + '</span>' +
+                '<h3>' + (index + 1) + '. ' + q.questionText + '</h3>' +
+                inputHtml +
+            '</div>';
 
         const totalQuestions = allQuestions.length;
         const progress = ((index + 1) / totalQuestions) * 100;
@@ -183,13 +184,13 @@
 
     function saveCurrentAnswer() {
         const q = allQuestions[currentQuestion];
-        const input = document.querySelector(`textarea[name="q${q.id}"]`);
+        const input = document.querySelector('textarea[name="q' + q.id + '"]');
         if (input && input.value) {
             answers[q.id] = input.value;
-            fetch(`/patient/survey/${surveyId}/answer`, {
+            fetch('/patient/survey/' + surveyId + '/answer', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `questionId=-1&answerText=${encodeURIComponent(input.value)}&questionText=${encodeURIComponent(q.questionText)}`
+                body: 'questionId=-1&answerText=' + encodeURIComponent(input.value) + '&questionText=' + encodeURIComponent(q.questionText)
             });
         }
     }
@@ -218,25 +219,28 @@
         console.log('Generating AI questions...');
         document.getElementById('loadingOverlay').classList.add('show');
 
-        fetch(`/patient/survey/${surveyId}/generate-ai-questions`, {
+        fetch('/patient/survey/' + surveyId + '/generate-ai-questions', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: ''
         })
-        .then(response => response.json())
-        .then(data => {
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
             console.log('AI response:', data);
             if (data.success) {
                 const questionsArray = data.questions.split('\n\n');
-                const newAiQuestions = questionsArray.map((text, index) => ({
-                    id: 'ai_' + index,
-                    questionText: text.trim(),
-                    questionType: 'TEXT',
-                    category: 'ИИ-уточнение',
-                    isAi: true
-                }));
+                const newAiQuestions = [];
+                for (let i = 0; i < questionsArray.length; i++) {
+                    newAiQuestions.push({
+                        id: 'ai_' + i,
+                        questionText: questionsArray[i].trim(),
+                        questionType: 'TEXT',
+                        category: 'ИИ-уточнение',
+                        isAi: true
+                    });
+                }
 
-                allQuestions = [...allQuestions, ...newAiQuestions];
+                allQuestions = allQuestions.concat(newAiQuestions);
                 aiQuestionsGenerated = true;
 
                 currentQuestion++;
@@ -247,13 +251,13 @@
                 renderQuestion(currentQuestion);
             }
         })
-        .catch(err => {
+        .catch(function(err) {
             alert('⚠️ Ошибка сети');
             console.error(err);
             currentQuestion++;
             renderQuestion(currentQuestion);
         })
-        .finally(() => {
+        .finally(function() {
             document.getElementById('loadingOverlay').classList.remove('show');
         });
     }
@@ -271,7 +275,7 @@
         if (confirm('Завершить опрос?')) {
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = `/patient/survey/${surveyId}/complete`;
+            form.action = '/patient/survey/' + surveyId + '/complete';
             document.body.appendChild(form);
             form.submit();
         }

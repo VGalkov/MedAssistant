@@ -3,6 +3,7 @@ package ru.medassistant.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Entity
 @Table(name = "scenario_questions")
@@ -16,6 +17,7 @@ public class ScenarioQuestion {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "scenario_id", nullable = false)
+    @ToString.Exclude
     private Scenario scenario;
 
     @Column(nullable = false)

@@ -10,6 +10,7 @@
         .header { background: #1a73e8; color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { font-size: 20px; }
         .back-link { color: white; text-decoration: none; opacity: 0.9; }
+        .back-link:hover { opacity: 1; }
         .container { max-width: 1400px; margin: 0 auto; padding: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
         .panel { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
         .panel-header { padding: 20px; border-bottom: 1px solid #eee; background: #f8f9fa; font-weight: 600; }
@@ -31,114 +32,143 @@
         .btn-copy { padding: 8px 16px; background: #34a853; font-size: 13px; margin-top: 10px; }
         .btn-copy:hover { background: #2d8f47; }
         .copy-status { color: #34a853; font-size: 13px; margin-left: 10px; display: none; }
+        .comment-history { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px; max-height: 400px; overflow-y: auto; }
+        .comment-history strong { display: block; margin-bottom: 10px; }
+        .comment-history-content { white-space: pre-wrap; line-height: 1.6; }
+        .append-option { margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+        .append-option label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .append-option span { font-size: 13px; color: #666; }
         @media (max-width: 900px) {
             .container { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📋 Опрос пациента</h1>
-        <a href="/doctor" class="back-link">← Назад к списку</a>
-    </div>
+<div class="header">
+    <h1>📋 Опрос пациента</h1>
+    <a href="/doctor" class="back-link">← Назад к списку</a>
+</div>
 
-    <div class="container">
-        <!-- Левая колонка: оригинал и обработанный текст -->
-        <div>
-            <div class="panel" style="margin-bottom: 20px;">
-                <div class="panel-header">👤 Пациент</div>
-                <div class="panel-content">
-                    <div class="patient-info">
-                        <p><strong>ФИО:</strong> <span th:text="${patient.lastName + ' ' + patient.firstName}">Иванов Иван</span></p>
-                        <p><strong>Телефон:</strong> <span th:text="${patient.phone}">+7...</span></p>
-                        <p th:if="${patient.email}"><strong>Email:</strong> <span th:text="${patient.email}"></span></p>
-                        <p><strong>Дата опроса:</strong> <span th:text="${#temporals.format(survey.completedAt, 'dd.MM.yyyy HH:mm')}"></span></p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel" style="margin-bottom: 20px;">
-                <div class="panel-header">📝 Оригинал (слова пациента)</div>
-                <div class="panel-content">
-                    <div class="original-text" th:text="${survey.originalText}">Текст ответов пациента...</div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-header">🤖 Обработано ИИ <button class="btn btn-copy" onclick="copyProcessed()">Копировать</button><span id="copyStatus" class="copy-status">Скопировано!</span></div>
-                <div class="panel-content">
-                    <div class="processed-text" id="processedText" th:text="${survey.processedText}">Структурированный текст...</div>
+<div class="container">
+    <!-- Левая колонка: оригинал и обработанный текст -->
+    <div>
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">👤 Пациент</div>
+            <div class="panel-content">
+                <div class="patient-info">
+                    <p><strong>ФИО:</strong> <span th:text="${patient.lastName + ' ' + patient.firstName}">Иванов Иван</span></p>
+                    <p><strong>Телефон:</strong> <span th:text="${patient.phone}">+7...</span></p>
+                    <p th:if="${patient.email != null and patient.email != ''}"><strong>Email:</strong> <span th:text="${patient.email}"></span></p>
+                    <p><strong>Дата опроса:</strong> <span th:text="${#temporals.format(survey.completedAt, 'dd.MM.yyyy HH:mm')}"></span></p>
                 </div>
             </div>
         </div>
 
-        <!-- Правая колонка: рекомендации и подозрения -->
-        <div>
-            <div class="panel" style="margin-bottom: 20px;">
-                <div class="panel-header">💡 Рекомендации ИИ: что спросить</div>
-                <div class="panel-content">
-                    <div class="recommendations" th:if="${survey.aiRecommendations}">
-                        <div style="white-space: pre-wrap" th:text="${survey.aiRecommendations}"></div>
-                    </div>
-                    <div th:unless="${survey.aiRecommendations}" style="color:#999">Нет рекомендаций</div>
-                </div>
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">📝 Оригинал (слова пациента)</div>
+            <div class="panel-content">
+                <div class="original-text" th:text="${survey.originalText}">Текст ответов пациента...</div>
             </div>
+        </div>
 
-            <div class="panel" style="margin-bottom: 20px;">
-                <div class="panel-header">🚩 Подозрения на недостоверность</div>
-                <div class="panel-content">
-                    <div class="suspicion" th:if="${survey.aiSuspicionFlags and !survey.aiSuspicionFlags.contains('нет')}">
-                        <div style="white-space: pre-wrap" th:text="${survey.aiSuspicionFlags}"></div>
-                    </div>
-                    <div th:unless="${survey.aiSuspicionFlags and !survey.aiSuspicionFlags.contains('нет')}" 
-                         style="color:#34a853; padding:15px; background:#e6f4ea; border-radius:6px;">
-                        ✓ Подозрений нет
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-header">✏️ Комментарий врача</div>
-                <div class="panel-content">
-                    <form id="commentForm">
-                        <textarea name="comment" placeholder="Ваш комментарий (например: 'Пациент склонен преувеличивать симптомы')..."></textarea>
-                        <button type="submit" class="btn">Сохранить комментарий</button>
-                    </form>
-                    <div th:if="${survey.doctorComments}" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
-                        <strong>Сохранённый комментарий:</strong>
-                        <p style="margin-top: 10px; white-space: pre-wrap;" th:text="${survey.doctorComments}"></p>
-                    </div>
-                </div>
+        <div class="panel">
+            <div class="panel-header">🤖 Обработано ИИ <button class="btn btn-copy" onclick="copyProcessed()">Копировать</button><span id="copyStatus" class="copy-status">Скопировано!</span></div>
+            <div class="panel-content">
+                <div class="processed-text" id="processedText" th:text="${survey.processedText}">Структурированный текст...</div>
             </div>
         </div>
     </div>
 
-    <script>
-        const surveyId = [[${survey.id}]];
+    <!-- Правая колонка: рекомендации и подозрения -->
+    <div>
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">💡 Рекомендации ИИ: что спросить</div>
+            <div class="panel-content">
+                <div class="recommendations" th:if="${survey.aiRecommendations != null and survey.aiRecommendations != ''}">
+                    <div style="white-space: pre-wrap" th:text="${survey.aiRecommendations}"></div>
+                </div>
+                <div th:unless="${survey.aiRecommendations != null and survey.aiRecommendations != ''}" style="color:#999">Нет рекомендаций</div>
+            </div>
+        </div>
 
-        function copyProcessed() {
-            const text = document.getElementById('processedText').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                const status = document.getElementById('copyStatus');
-                status.style.display = 'inline';
-                setTimeout(() => status.style.display = 'none', 2000);
-            });
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">🚩 Подозрения на недостоверность</div>
+            <div class="panel-content">
+                <div class="suspicion" th:if="${survey.aiSuspicionFlags != null and !survey.aiSuspicionFlags.contains('Подозрений нет')}">
+                    <div style="white-space: pre-wrap" th:text="${survey.aiSuspicionFlags}"></div>
+                </div>
+                <div th:unless="${survey.aiSuspicionFlags != null and !survey.aiSuspicionFlags.contains('Подозрений нет')}"
+                     style="color:#34a853; padding:15px; background:#e6f4ea; border-radius:6px;">
+                    ✓ Подозрений нет
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">✏️ Комментарий врача</div>
+            <div class="panel-content">
+                <form id="commentForm">
+                    <textarea id="commentText" name="comment" placeholder="Ваш комментарий (например: 'Пациент склонен преувеличивать симптомы')..." rows="4"></textarea>
+                    <div class="append-option">
+                        <label>
+                            <input type="checkbox" id="appendComment" checked>
+                            <span>Добавить к существующим</span>
+                        </label>
+                        <button type="submit" class="btn">💾 Добавить комментарий</button>
+                    </div>
+                </form>
+
+                <div class="comment-history" th:if="${survey.doctorComments != null and survey.doctorComments != ''}">
+                    <strong>📋 История комментариев:</strong>
+                    <div class="comment-history-content" th:text="${survey.doctorComments}"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const surveyId = [[${survey.id}]];
+
+    function copyProcessed() {
+        const text = document.getElementById('processedText').innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            const status = document.getElementById('copyStatus');
+            status.style.display = 'inline';
+            setTimeout(() => status.style.display = 'none', 2000);
+        });
+    }
+
+    document.getElementById('commentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const comment = document.getElementById('commentText').value;
+        const append = document.getElementById('appendComment').checked;
+
+        if (!comment.trim()) {
+            alert('Введите комментарий');
+            return;
         }
 
-        document.getElementById('commentForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const comment = this.querySelector('textarea').value;
-            if (!comment.trim()) return alert('Введите комментарий');
-
-            fetch(`/doctor/survey/${surveyId}/comment`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `comment=${encodeURIComponent(comment)}`
-            }).then(() => {
-                alert('Комментарий сохранён');
+        fetch(`/doctor/survey/${surveyId}/comment`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `comment=${encodeURIComponent(comment)}&append=${append}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // УБРАНО: alert('Комментарий добавлен ✓');
+                // Просто очищаем поле и перезагружаем
+                document.getElementById('commentText').value = '';
                 location.reload();
-            });
+            } else {
+                alert('Ошибка: ' + data.error);
+            }
+        })
+        .catch(err => {
+            alert('Ошибка сети: ' + err);
         });
-    </script>
+    });
+</script>
 </body>
 </html>

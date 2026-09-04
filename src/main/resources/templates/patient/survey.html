@@ -24,122 +24,186 @@
         button.secondary:hover { background: #545b62; }
         .buttons { display: flex; gap: 15px; margin-top: 30px; }
         .hidden { display: none; }
+        .error { background: #fce8e6; color: #c5221f; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📋 Опрос перед приёмом</h1>
+<div class="container">
+    <h1>📋 Опрос перед приёмом</h1>
 
-        <div class="progress">
-            <div class="progress-bar" id="progressBar"></div>
-        </div>
-
-        <form id="surveyForm">
-            <div id="questionsContainer">
-                <!-- Вопросы будут загружены через JavaScript -->
-            </div>
-
-            <div class="buttons">
-                <button type="button" id="prevBtn" class="secondary" onclick="prevQuestion()" style="display:none;">← Назад</button>
-                <button type="button" id="nextBtn" onclick="nextQuestion()">Далее →</button>
-                <button type="button" id="completeBtn" class="hidden" onclick="completeSurvey()">Завершить опрос ✓</button>
-            </div>
-        </form>
+    <div class="progress">
+        <div class="progress-bar" id="progressBar"></div>
     </div>
 
-    <script>
-        const surveyId = [[${survey.id}]];
-        const scenario = [[${scenario}]];
-        const questions = scenario.questions.sort((a, b) => a.orderIndex - b.orderIndex);
-        let currentQuestion = 0;
-        const answers = {};
+    <div id="errorContainer" class="error hidden"></div>
 
-        function renderQuestion(index) {
-            const q = questions[index];
-            const container = document.getElementById('questionsContainer');
+    <form id="surveyForm">
+        <div id="questionsContainer">
+            <!-- Вопросы будут загружены через JavaScript -->
+        </div>
 
-            let inputHtml = '';
-            if (q.questionType === 'TEXT') {
-                inputHtml = `<textarea name="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
-            } else if (q.questionType === 'YES_NO') {
-                inputHtml = `
-                    <div class="radio-group">
-                        <div class="radio-option">
-                            <label><input type="radio" name="q${q.id}" value="Да"> Да</label>
-                        </div>
-                        <div class="radio-option">
-                            <label><input type="radio" name="q${q.id}" value="Нет"> Нет</label>
-                        </div>
-                    </div>`;
-            }
+        <div class="buttons">
+            <button type="button" id="prevBtn" class="secondary" onclick="prevQuestion()" style="display:none;">← Назад</button>
+            <button type="button" id="nextBtn" onclick="nextQuestion()">Далее →</button>
+            <button type="button" id="completeBtn" class="hidden" onclick="completeSurvey()">Завершить опрос ✓</button>
+        </div>
+    </form>
+</div>
 
-            container.innerHTML = `
-                <div class="question">
-                    <span class="category">${q.category}</span>
-                    <h3>${q.orderIndex}. ${q.questionText}</h3>
-                    ${inputHtml}
-                </div>
-            `;
+<script th:inline="javascript">
+    // Получаем данные из модели Thymeleaf (DTO без циклических ссылок)
+    const surveyId = /*[[${survey.id}]]*/ 0;
+    const scenario = /*[[${scenario}]]*/ null;
 
-            // Обновляем прогресс
-            const progress = ((index + 1) / questions.length) * 100;
-            document.getElementById('progressBar').style.width = progress + '%';
+    console.log('=== Survey Page Initialized ===');
+    console.log('Survey ID:', surveyId);
+    console.log('Scenario DTO:', scenario);
 
-            // Кнопки
-            document.getElementById('prevBtn').style.display = index > 0 ? 'inline-block' : 'none';
-            if (index === questions.length - 1) {
-                document.getElementById('nextBtn').classList.add('hidden');
-                document.getElementById('completeBtn').classList.remove('hidden');
-            } else {
-                document.getElementById('nextBtn').classList.remove('hidden');
-                document.getElementById('completeBtn').classList.add('hidden');
-            }
+    // DTO уже содержит только вопросы без циклических ссылок
+    let questions = [];
+    if (scenario && scenario.questions) {
+        questions = scenario.questions.sort((a, b) => a.orderIndex - b.orderIndex);
+    }
+
+    console.log('Questions count:', questions.length);
+    console.log('Questions:', questions);
+
+    let currentQuestion = 0;
+    const answers = {};
+
+    function renderQuestion(index) {
+        console.log('Rendering question:', index);
+
+        if (questions.length === 0) {
+            document.getElementById('questionsContainer').innerHTML =
+                '<div class="error">❌ Вопросы не загружены. Проверьте логи сервера.</div>';
+            return;
         }
 
-        function saveCurrentAnswer() {
-            const q = questions[currentQuestion];
-            const input = document.querySelector(`input[name="q${q.id}"]:checked`) ||
-                         document.querySelector(`textarea[name="q${q.id}"]`);
-            if (input) {
-                answers[q.id] = input.value;
-                // Сохраняем на сервере (асинхронно)
-                fetch(`/patient/survey/${surveyId}/answer`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: `questionId=${q.id}&answerText=${encodeURIComponent(input.value)}`
-                });
-            }
+        if (index < 0 || index >= questions.length) {
+            console.error('Invalid question index:', index);
+            return;
         }
 
-        function nextQuestion() {
-            saveCurrentAnswer();
-            if (currentQuestion < questions.length - 1) {
-                currentQuestion++;
-                renderQuestion(currentQuestion);
-            }
+        const q = questions[index];
+        const container = document.getElementById('questionsContainer');
+
+        let inputHtml = '';
+        if (q.questionType === 'TEXT') {
+            inputHtml = `<textarea id="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
+        } else if (q.questionType === 'YES_NO') {
+            inputHtml = `
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <label><input type="radio" name="q${q.id}" value="Да"> Да</label>
+                    </div>
+                    <div class="radio-option">
+                        <label><input type="radio" name="q${q.id}" value="Нет"> Нет</label>
+                    </div>
+                </div>`;
+        } else {
+            inputHtml = `<textarea id="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
         }
 
-        function prevQuestion() {
-            saveCurrentAnswer();
-            if (currentQuestion > 0) {
-                currentQuestion--;
-                renderQuestion(currentQuestion);
-            }
+        container.innerHTML = `
+            <div class="question">
+                <span class="category">${q.category || 'Общее'}</span>
+                <h3>${q.orderIndex}. ${q.questionText}</h3>
+                ${inputHtml}
+            </div>
+        `;
+
+        // Обновляем прогресс
+        const progress = ((index + 1) / questions.length) * 100;
+        document.getElementById('progressBar').style.width = progress + '%';
+
+        // Кнопки
+        document.getElementById('prevBtn').style.display = index > 0 ? 'inline-block' : 'none';
+        if (index === questions.length - 1) {
+            document.getElementById('nextBtn').classList.add('hidden');
+            document.getElementById('completeBtn').classList.remove('hidden');
+        } else {
+            document.getElementById('nextBtn').classList.remove('hidden');
+            document.getElementById('completeBtn').classList.add('hidden');
+        }
+    }
+
+    function saveCurrentAnswer() {
+        const q = questions[currentQuestion];
+        let answerValue = '';
+
+        if (q.questionType === 'TEXT') {
+            const textarea = document.getElementById(`q${q.id}`);
+            answerValue = textarea ? textarea.value : '';
+        } else if (q.questionType === 'YES_NO') {
+            const radio = document.querySelector(`input[name="q${q.id}"]:checked`);
+            answerValue = radio ? radio.value : '';
         }
 
-        function completeSurvey() {
-            saveCurrentAnswer();
-            if (confirm('Завершить опрос? После этого вы не сможете изменить ответы.')) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = `/patient/survey/${surveyId}/complete`;
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }
+        if (answerValue) {
+            answers[q.id] = answerValue;
+            console.log('Saving answer:', { surveyId, questionId: q.id, answer: answerValue });
 
-        // Инициализация
+            // Сохраняем на сервере (асинхронно)
+            fetch(`/patient/survey/${surveyId}/answer`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `questionId=${q.id}&answerText=${encodeURIComponent(answerValue)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✓ Answer saved successfully');
+                } else {
+                    console.error('✗ Error saving answer:', data.error);
+                }
+            })
+            .catch(err => console.error('✗ Network error:', err));
+        }
+    }
+
+    function nextQuestion() {
+        saveCurrentAnswer();
+        if (currentQuestion < questions.length - 1) {
+            currentQuestion++;
+            renderQuestion(currentQuestion);
+        }
+    }
+
+    function prevQuestion() {
+        saveCurrentAnswer();
+        if (currentQuestion > 0) {
+            currentQuestion--;
+            renderQuestion(currentQuestion);
+        }
+    }
+
+    function completeSurvey() {
+        saveCurrentAnswer();
+        if (confirm('Завершить опрос? После этого вы не сможете изменить ответы.')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/patient/survey/${surveyId}/complete`;
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+
+    function showError(message) {
+        const errorContainer = document.getElementById('errorContainer');
+        errorContainer.textContent = message;
+        errorContainer.classList.remove('hidden');
+    }
+
+    // Инициализация при загрузке страницы
+    console.log('=== Initializing Survey ===');
+    if (questions.length > 0) {
         renderQuestion(0);
-    </script>
+        console.log('✓ First question rendered');
+    } else {
+        showError('❌ Вопросы не загружены. Обратитесь к администратору.');
+        console.error('✗ No questions loaded!');
+    }
+</script>
 </body>
 </html>

@@ -4,11 +4,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import ru.medassistant.model.Survey;
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface SurveyRepository extends JpaRepository<Survey, Long> {
-    List<Survey> findByPatientIdOrderByStartedAtDesc(Long patientId);
+
+    // ✅ Оригинальный метод (для SurveyService)
     List<Survey> findByStatusOrderByStartedAtDesc(String status);
-    Optional<Survey> findFirstByPatientIdAndStatusOrderByStartedAtDesc(Long patientId, String status);
+
+    // ✅ Новый метод (для DoctorController - все опросы)
+    List<Survey> findAllByOrderByCompletedAtDesc();
+
+    // ✅ Поиск по пациенту
+    List<Survey> findByPatientIdOrderByStartedAtDesc(Long patientId);
 }

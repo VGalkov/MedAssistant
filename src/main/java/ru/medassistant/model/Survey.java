@@ -3,6 +3,7 @@ package ru.medassistant.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,27 +20,29 @@ public class Survey {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id", nullable = false)
+    @ToString.Exclude
     private Patient patient;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private String status;
 
-    @Column
+    @Column(length = 10000)
     private String originalText;
 
-    @Column
+    @Column(length = 10000)
     private String processedText;
 
-    @Column
+    @Column(length = 10000)
     private String aiRecommendations;
 
-    @Column
+    @Column(length = 5000)
     private String aiSuspicionFlags;
 
-    @Column
+    @Column(length = 10000)
     private String doctorComments;
 
     @OneToMany(mappedBy = "survey", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @ToString.Exclude
     private List<SurveyAnswer> answers = new ArrayList<>();
 
     @Column

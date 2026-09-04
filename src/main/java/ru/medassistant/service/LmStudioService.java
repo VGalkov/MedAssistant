@@ -2,6 +2,8 @@ package ru.medassistant.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -12,6 +14,8 @@ import java.util.Map;
 
 @Service
 public class LmStudioService {
+
+    private static final Logger logger = LoggerFactory.getLogger(LmStudioService.class);
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -25,65 +29,68 @@ public class LmStudioService {
     public LmStudioService(ObjectMapper objectMapper) {
         this.restTemplate = new RestTemplate();
         this.objectMapper = objectMapper;
+        logger.info("LmStudioService initialized with baseUrl={}, model={}", baseUrl, model);
     }
 
-    /**
-     * Обработка текста опроса пациента - структурирование
-     */
     public String processSurveyText(String originalText) {
+        logger.debug("Processing survey text, length={}", originalText.length());
         String prompt = buildProcessPrompt(originalText);
-        return callLlm(prompt, 0.3);
+        String result = callLlm(prompt, 0.3);
+        logger.debug("Processed survey text result: {}", result);
+        return result;
     }
 
-    /**
-     * Генерация рекомендаций: что ещё спросить
-     */
     public String generateRecommendations(String originalText, String processedText, String patientHistory) {
+        logger.debug("Generating recommendations");
         String prompt = buildRecommendationsPrompt(originalText, processedText, patientHistory);
-        return callLlm(prompt, 0.5);
+        String result = callLlm(prompt, 0.5);
+        logger.debug("Recommendations: {}", result);
+        return result;
     }
 
-    /**
-     * Детектор недостоверности - анализ на противоречия и "выдумывание"
-     */
     public String detectSuspicionFlags(String originalText, String patientHistory) {
+        logger.debug("Detecting suspicion flags");
         String prompt = buildSuspicionPrompt(originalText, patientHistory);
-        return callLlm(prompt, 0.2);
-    }
-
-    /**
-     * Генерация следующего вопроса на основе предыдущих ответов
-     */
-    public String generateNextQuestion(List<Map<String, String>> previousAnswers, String scenarioContext) {
-        String prompt = buildNextQuestionPrompt(previousAnswers, scenarioContext);
-        return callLlm(prompt, 0.7);
+        String result = callLlm(prompt, 0.2);
+        logger.debug("Suspicion flags: {}", result);
+        return result;
     }
 
     private String callLlm(String prompt, double temperature) {
+        logger.info("Calling LM Studio: baseUrl={}, model={}, temperature={}", baseUrl, model, temperature);
+
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model);
             requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", "Вы — медицинский ИИ-ассистент. Отвечайте точно, структурированно, на русском языке."),
-                Map.of("role", "user", "content", prompt)
+                    Map.of("role", "system", "content", "Вы — медицинский ИИ-ассистент. Отвечайте точно, структурированно, на русском языке."),
+                    Map.of("role", "user", "content", prompt)
             ));
             requestBody.put("temperature", temperature);
             requestBody.put("max_tokens", 1000);
             requestBody.put("stream", false);
 
             String url = baseUrl + "/v1/chat/completions";
-            
-            // Используем RestTemplate вместо WebClient
+            logger.info("POST {}", url);
+            logger.debug("Request body: {}", objectMapper.writeValueAsString(requestBody));
+
             String response = restTemplate.postForObject(url, requestBody, String.class);
-            
+
+            logger.info("Response received, length={}", response != null ? response.length() : 0);
+
             if (response == null) {
+                logger.error("Empty response from LM Studio");
                 return "[Ошибка: пустой ответ от LM Studio]";
             }
 
             JsonNode jsonNode = objectMapper.readTree(response);
-            return jsonNode.path("choices").get(0).path("message").path("content").asText();
+            String content = jsonNode.path("choices").get(0).path("message").path("content").asText();
+
+            logger.info("LLM response: {}", content);
+            return content;
 
         } catch (Exception e) {
+            logger.error("Error calling LM Studio: {}", e.getMessage(), e);
             return "[Ошибка связи с LM Studio: " + e.getMessage() + "]";
         }
     }
@@ -138,15 +145,5 @@ public class LmStudioService {
 
             Если есть подозрения, перечисли их кратко. Если нет — напиши "Подозрений нет".
             """.formatted(originalText, patientHistory != null ? patientHistory : "Нет истории");
-    }
-
-    private String buildNextQuestionPrompt(List<Map<String, String>> previousAnswers, String scenarioContext) {
-        return """
-            На основе предыдущих ответов пациента предложи следующий уточняющий вопрос.
-            Контекст сценария: %s
-            Предыдущие ответы: %s
-
-            Сгенерируй один конкретный вопрос на русском языке.
-            """.formatted(scenarioContext, previousAnswers.toString());
     }
 }

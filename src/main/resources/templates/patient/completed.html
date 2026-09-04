@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Опрос завершён - МедАссистент</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .container { max-width: 500px; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+        h1 { color: #1a73e8; margin-bottom: 15px; }
+        p { color: #666; margin-bottom: 25px; line-height: 1.6; }
+        .info { background: #e8f0fe; padding: 20px; border-radius: 8px; margin-bottom: 25px; text-align: left; font-size: 14px; color: #1967d2; }
+        .btn { display: inline-block; padding: 14px 30px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px; font-weight: 500; }
+        .btn:hover { background: #1557b0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✅</div>
+        <h1>Опрос завершён!</h1>
+        <p>Ваши ответы сохранены и обработаны ИИ.</p>
+
+        <div class="info">
+            <strong>Что дальше?</strong><br>
+            • Врач получит структурированную справку с вашими ответами<br>
+            • ИИ выделит ключевые жалобы и рекомендации<br>
+            • На приёме врач сможет уточнить детали
+        </div>
+
+        <p style="font-size: 14px; color: #999;">Можете пройти к кабинету врача.</p>
+    </div>
+</body>
+</html>

@@ -18,9 +18,9 @@ public class SurveyService {
     private final LmStudioService lmStudioService;
 
     public SurveyService(SurveyRepository surveyRepository,
-                        PatientRepository patientRepository,
-                        ScenarioRepository scenarioRepository,
-                        LmStudioService lmStudioService) {
+                         PatientRepository patientRepository,
+                         ScenarioRepository scenarioRepository,
+                         LmStudioService lmStudioService) {
         this.surveyRepository = surveyRepository;
         this.patientRepository = patientRepository;
         this.scenarioRepository = scenarioRepository;
@@ -29,7 +29,7 @@ public class SurveyService {
 
     public Survey createSurvey(Long patientId, Long scenarioId) {
         Patient patient = patientRepository.findById(patientId)
-            .orElseThrow(() -> new RuntimeException("Пациент не найден"));
+                .orElseThrow(() -> new RuntimeException("Пациент не найден"));
 
         Survey survey = new Survey();
         survey.setPatient(patient);
@@ -39,12 +39,27 @@ public class SurveyService {
         return surveyRepository.save(survey);
     }
 
-    public void addAnswer(Long surveyId, Long questionId, String answerText) {
+    /**
+     * Добавляет ответ на вопрос
+     * @param questionId ID вопроса или -1 для вопросов доктора/ИИ
+     * @param questionText текст вопроса (для вопросов доктора/ИИ)
+     */
+    public void addAnswer(Long surveyId, Long questionId, String answerText, String questionText) {
         Survey survey = surveyRepository.findById(surveyId)
-            .orElseThrow(() -> new RuntimeException("Опрос не найден"));
+                .orElseThrow(() -> new RuntimeException("Опрос не найден"));
 
-        ScenarioQuestion question = new ScenarioQuestion();
-        question.setId(questionId);
+        ScenarioQuestion question;
+
+        if (questionId != null && questionId > 0) {
+            // Стандартный вопрос из БД
+            question = new ScenarioQuestion();
+            question.setId(questionId);
+        } else {
+            // Вопрос доктора или ИИ - создаём временный объект с текстом
+            question = new ScenarioQuestion();
+            question.setQuestionText(questionText != null ? questionText : "Вопрос");
+            question.setCategory("Дополнительно");
+        }
 
         SurveyAnswer answer = new SurveyAnswer();
         answer.setSurvey(survey);
@@ -56,16 +71,27 @@ public class SurveyService {
         surveyRepository.save(survey);
     }
 
+    /**
+     * Перегруженная версия для обратной совместимости
+     */
+    public void addAnswer(Long surveyId, Long questionId, String answerText) {
+        addAnswer(surveyId, questionId, answerText, null);
+    }
+
     public Survey completeSurvey(Long surveyId) {
         Survey survey = surveyRepository.findById(surveyId)
-            .orElseThrow(() -> new RuntimeException("Опрос не найден"));
+                .orElseThrow(() -> new RuntimeException("Опрос не найден"));
 
         StringBuilder originalText = new StringBuilder();
         for (SurveyAnswer answer : survey.getAnswers()) {
-            originalText.append(answer.getQuestion().getQuestionText())
-                .append(": ")
-                .append(answer.getAnswerText())
-                .append("\n");
+            String questionText = answer.getQuestion().getQuestionText();
+            if (questionText == null) {
+                questionText = "Вопрос";
+            }
+            originalText.append(questionText)
+                    .append(": ")
+                    .append(answer.getAnswerText())
+                    .append("\n");
         }
 
         survey.setOriginalText(originalText.toString());
@@ -78,15 +104,15 @@ public class SurveyService {
         String patientHistory = getPatientHistory(survey.getPatient().getId(), surveyId);
 
         String recommendations = lmStudioService.generateRecommendations(
-            originalText.toString(),
-            processedText,
-            patientHistory
+                originalText.toString(),
+                processedText,
+                patientHistory
         );
         survey.setAiRecommendations(recommendations);
 
         String suspicionFlags = lmStudioService.detectSuspicionFlags(
-            originalText.toString(),
-            patientHistory
+                originalText.toString(),
+                patientHistory
         );
         survey.setAiSuspicionFlags(suspicionFlags);
 
@@ -100,9 +126,9 @@ public class SurveyService {
         for (Survey s : previousSurveys) {
             if (!s.getId().equals(excludeSurveyId) && s.getProcessedText() != null) {
                 history.append("Дата: ").append(s.getStartedAt().toLocalDate())
-                    .append("\n")
-                    .append(s.getProcessedText())
-                    .append("\n---\n");
+                        .append("\n")
+                        .append(s.getProcessedText())
+                        .append("\n---\n");
             }
         }
 
@@ -111,7 +137,7 @@ public class SurveyService {
 
     public Survey addDoctorComment(Long surveyId, Long doctorId, String comment) {
         Survey survey = surveyRepository.findById(surveyId)
-            .orElseThrow(() -> new RuntimeException("Опрос не найден"));
+                .orElseThrow(() -> new RuntimeException("Опрос не найден"));
 
         survey.setDoctorComments(comment);
         survey.setDoctorId(doctorId);
@@ -127,5 +153,12 @@ public class SurveyService {
 
     public Optional<Survey> getSurveyById(Long surveyId) {
         return surveyRepository.findById(surveyId);
+    }
+
+    /**
+     * Сохранение опроса
+     */
+    public void saveSurvey(Survey survey) {
+        surveyRepository.save(survey);
     }
 }

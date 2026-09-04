@@ -3,85 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Рабочее место врача - МедАссистент</title>
+    <title>Панель врача - МедАссистент</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
-        .header { background: #1a73e8; color: white; padding: 20px 30px; }
-        .header h1 { font-size: 24px; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 30px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .stat-value { font-size: 32px; font-weight: bold; color: #1a73e8; }
-        .stat-label { color: #666; font-size: 14px; margin-top: 5px; }
-        .surveys { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-        .surveys h2 { padding: 20px; border-bottom: 1px solid #eee; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; font-weight: 600; color: #333; }
-        tr:hover { background: #f8f9fa; }
-        .status { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; }
-        .status-completed { background: #fff3cd; color: #856404; }
-        .status-reviewed { background: #d4edda; color: #155724; }
-        .flags-warning { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
-        .btn { padding: 8px 16px; background: #1a73e8; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; }
-        .btn:hover { background: #1557b0; }
-        .empty { padding: 40px; text-align: center; color: #999; }
+        .header { background: #1a73e8; color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; }
+        .btn { padding: 10px 20px; background: white; color: #1a73e8; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn:hover { background: #e8f0fe; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 30px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #666; }
+        .empty-state h2 { margin-bottom: 10px; color: #333; }
+        .survey-list { display: grid; gap: 15px; }
+        .survey-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .survey-info { flex: 1; }
+        .survey-info h3 { color: #333; font-size: 16px; margin-bottom: 5px; }
+        .survey-info p { color: #666; font-size: 14px; }
+        .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; display: inline-block; margin-left: 10px; }
+        .status-completed { background: #e6f4ea; color: #1e8e3e; }
+        .status-reviewed { background: #e8f0fe; color: #1967d2; }
+        .survey-actions { display: flex; gap: 10px; align-items: center; }
+        .btn-sm { padding: 8px 16px; font-size: 13px; }
+        .btn-primary { background: #1a73e8; color: white; }
+        .btn-primary:hover { background: #1557b0; }
+        .btn-secondary { background: #5f6368; color: white; }
+        .btn-secondary:hover { background: #4a4d52; }
+        .btn-menu { background: transparent; color: #666; padding: 8px 12px; font-size: 18px; border: none; cursor: pointer; }
+        .btn-menu:hover { background: #e0e0e0; color: #333; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; right: 0; top: 100%; background: white; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); min-width: 180px; z-index: 100; margin-top: 5px; }
+        .dropdown-content a { display: block; padding: 12px 16px; color: #333; text-decoration: none; border-bottom: 1px solid #eee; }
+        .dropdown-content a:last-child { border-bottom: none; }
+        .dropdown-content a:hover { background: #f5f5f5; }
+        .dropdown.show .dropdown-content { display: block; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>👨‍⚕️ Рабочее место врача</h1>
+<div class="header">
+    <h1>👨‍⚕️ Панель врача</h1>
+    <a href="/doctor/scenario/edit" class="btn btn-primary">✏️ Редактировать вопросы</a>
+</div>
+
+<div class="container">
+    <div th:if="${surveys.empty}" class="empty-state">
+        <h2>Нет опросов</h2>
+        <p>Опросы пациентов появятся здесь после завершения</p>
     </div>
 
-    <div class="container">
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-value" th:text="${#lists.size(surveys)}">0</div>
-                <div class="stat-label">Ожидает просмотра</div>
+    <div th:unless="${surveys.empty}" class="survey-list">
+        <div th:each="survey : ${surveys}" class="survey-card">
+            <div class="survey-info">
+                <h3>
+                    <span th:text="${survey.patient.firstName} + ' ' + ${survey.patient.lastName}">Пациент</span>
+                    <span th:if="${survey.status == 'COMPLETED'}" class="status status-completed">Завершён</span>
+                    <span th:if="${survey.status == 'REVIEWED'}" class="status status-reviewed">Просмотрен</span>
+                </h3>
+                <p>
+                    📅 <span th:text="${#temporals.format(survey.startedAt, 'dd.MM.yyyy HH:mm')}"></span>
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    📞 <span th:text="${survey.patient.phone}"></span>
+                </p>
             </div>
-        </div>
+            <div class="survey-actions">
+                <a th:href="@{/doctor/survey/{id}(id=${survey.id})}" class="btn btn-sm btn-secondary">📄 Подробнее</a>
 
-        <div class="surveys">
-            <h2>📋 Опросы пациентов</h2>
-
-            <div th:if="${#lists.isEmpty(surveys)}" class="empty">
-                Нет опросов, ожидающих просмотра
+                <!-- Кнопка меню -->
+                <div class="dropdown">
+                    <button class="btn-menu" onclick="toggleDropdown(this)">⋮</button>
+                    <div class="dropdown-content">
+                        <a th:href="@{/doctor/scenario/edit}">✏️ Редактировать вопросы</a>
+                        <a href="/patient/start" target="_blank">🧑 Новый опрос</a>
+                    </div>
+                </div>
             </div>
-
-            <table th:if="${!#lists.isEmpty(surveys)}">
-                <thead>
-                    <tr>
-                        <th>Пациент</th>
-                        <th>Дата и время</th>
-                        <th>Статус</th>
-                        <th>Подозрения</th>
-                        <th>Действие</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr th:each="survey : ${surveys}">
-                        <td>
-                            <strong th:text="${survey.patient.lastName + ' ' + survey.patient.firstName}">Иванов И.</strong><br>
-                            <small style="color:#666" th:text="${survey.patient.phone}">+7...</small>
-                        </td>
-                        <td th:text="${#temporals.format(survey.completedAt, 'dd.MM.yyyy HH:mm')}">01.01.2024 10:00</td>
-                        <td>
-                            <span class="status status-completed" th:text="${survey.status}">COMPLETED</span>
-                        </td>
-                        <td>
-                            <span th:if="${survey.aiSuspicionFlags != null and !survey.aiSuspicionFlags.contains('нет')}" 
-                                  class="flags-warning">⚠️ Есть подозрения</span>
-                            <span th:unless="${survey.aiSuspicionFlags != null and !survey.aiSuspicionFlags.contains('нет')}" 
-                                  style="color:#999">—</span>
-                        </td>
-                        <td>
-                            <a th:href="@{/doctor/survey/{id}(id=${survey.id})}" class="btn">Открыть →</a>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
     </div>
+</div>
+
+<script>
+    function toggleDropdown(btn) {
+        document.querySelectorAll('.dropdown').forEach(d => {
+            if (d !== btn.parentElement) d.classList.remove('show');
+        });
+        btn.parentElement.classList.toggle('show');
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown')) {
+            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('show'));
+        }
+    });
+</script>
 </body>
 </html>

@@ -41,7 +41,11 @@ public class Survey {
     @Column(length = 10000)
     private String doctorComments;
 
-    @OneToMany(mappedBy = "survey", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    // ✅ Поле для хранения сгенерированных ИИ-вопросов
+    @Column(length = 5000)
+    private String aiGeneratedQuestionsText;
+
+    @OneToMany(mappedBy = "survey", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @ToString.Exclude
     private List<SurveyAnswer> answers = new ArrayList<>();
 

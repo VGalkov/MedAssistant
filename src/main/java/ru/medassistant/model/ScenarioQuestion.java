@@ -1,5 +1,6 @@
 package ru.medassistant.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,7 +17,8 @@ public class ScenarioQuestion {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scenario_id", nullable = false)
+    @JoinColumn(name = "scenario_id")
+    @JsonIgnore
     @ToString.Exclude
     private Scenario scenario;
 

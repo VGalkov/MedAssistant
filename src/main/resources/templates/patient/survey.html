@@ -14,33 +14,44 @@
         .question { margin-bottom: 25px; padding: 20px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #1a73e8; }
         .question h3 { color: #333; margin-bottom: 15px; font-size: 16px; }
         .category { display: inline-block; padding: 4px 10px; background: #e8f0fe; color: #1967d2; border-radius: 4px; font-size: 12px; margin-bottom: 10px; }
+        .category-ai { background: #f3e5f5; color: #9c27b0; }
         textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; min-height: 100px; resize: vertical; font-family: inherit; }
         textarea:focus { outline: none; border-color: #1a73e8; }
-        .radio-group, .checkbox-group { margin-top: 10px; }
-        .radio-option, .checkbox-option { margin: 8px 0; }
         button { padding: 14px 30px; background: #1a73e8; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: 500; }
         button:hover { background: #1557b0; }
         button.secondary { background: #6c757d; }
         button.secondary:hover { background: #545b62; }
         .buttons { display: flex; gap: 15px; margin-top: 30px; }
         .hidden { display: none; }
-        .error { background: #fce8e6; color: #c5221f; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+        .ai-badge { background: #e8f0fe; color: #1967d2; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .loading-overlay.show { display: flex; }
+        .loading-box { background: white; padding: 40px; border-radius: 12px; text-align: center; max-width: 400px; }
+        .loading-spinner { width: 50px; height: 50px; border: 4px solid #e0e0e0; border-top-color: #1a73e8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: #333; font-size: 16px; margin-bottom: 10px; }
+        .loading-subtext { color: #666; font-size: 14px; }
+        .error-box { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>📋 Опрос перед приёмом</h1>
+    <h1>
+        📋 Опрос перед приёмом
+        <span th:if="${allowAiQuestions}" class="ai-badge">🤖 ИИ включён</span>
+    </h1>
+
+    <!-- Сообщение об ошибке если нет вопросов -->
+    <div th:if="${#lists.isEmpty(doctorQuestions)}" class="error-box">
+        ⚠️ Вопросы ещё не настроены. Пожалуйста, настройте вопросы в панели врача.
+    </div>
 
     <div class="progress">
         <div class="progress-bar" id="progressBar"></div>
     </div>
 
-    <div id="errorContainer" class="error hidden"></div>
-
     <form id="surveyForm">
-        <div id="questionsContainer">
-            <!-- Вопросы будут загружены через JavaScript -->
-        </div>
+        <div id="questionsContainer"></div>
 
         <div class="buttons">
             <button type="button" id="prevBtn" class="secondary" onclick="prevQuestion()" style="display:none;">← Назад</button>
@@ -50,124 +61,201 @@
     </form>
 </div>
 
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-box">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">🤖 ИИ анализирует ваши ответы...</div>
+        <div class="loading-subtext">Генерируем 3 уточняющих вопроса</div>
+    </div>
+</div>
+
 <script th:inline="javascript">
-    // Получаем данные из модели Thymeleaf (DTO без циклических ссылок)
+    // Данные из сервера через Thymeleaf
     const surveyId = /*[[${survey.id}]]*/ 0;
-    const scenario = /*[[${scenario}]]*/ null;
+    const allowAiQuestions = /*[[${allowAiQuestions}]]*/ false;
 
-    console.log('=== Survey Page Initialized ===');
-    console.log('Survey ID:', surveyId);
-    console.log('Scenario DTO:', scenario);
+    // Вопросы - передаём как JSON через th:with
+    const doctorQuestionsText = /*[[${doctorQuestions}]]*/ [];
+    const aiQuestionsText = /*[[${aiQuestions}]]*/ [];
 
-    // DTO уже содержит только вопросы без циклических ссылок
-    let questions = [];
-    if (scenario && scenario.questions) {
-        questions = scenario.questions.sort((a, b) => a.orderIndex - b.orderIndex);
+    console.log('=== Survey Page Loaded ===');
+    console.log('surveyId:', surveyId);
+    console.log('allowAiQuestions:', allowAiQuestions);
+    console.log('doctorQuestionsText:', doctorQuestionsText);
+    console.log('aiQuestionsText:', aiQuestionsText);
+
+    // Формируем вопросы доктора
+    const doctorQuestions = [];
+    if (doctorQuestionsText && doctorQuestionsText.length > 0) {
+        doctorQuestionsText.forEach((text, index) => {
+            doctorQuestions.push({
+                id: 'doctor_' + index,
+                questionText: text,
+                questionType: 'TEXT',
+                category: 'Вопрос доктора',
+                isAi: false
+            });
+        });
     }
 
-    console.log('Questions count:', questions.length);
-    console.log('Questions:', questions);
+    // Формируем ИИ-вопросы (если уже сгенерированы)
+    const aiQuestions = [];
+    if (aiQuestionsText && aiQuestionsText.length > 0) {
+        aiQuestionsText.forEach((text, index) => {
+            aiQuestions.push({
+                id: 'ai_' + index,
+                questionText: text,
+                questionType: 'TEXT',
+                category: 'ИИ-уточнение',
+                isAi: true
+            });
+        });
+    }
+
+    console.log('doctorQuestions:', doctorQuestions);
+    console.log('aiQuestions:', aiQuestions);
+
+    // Начинаем только с вопросов доктора
+    let allQuestions = [...doctorQuestions];
+    let aiQuestionsGenerated = aiQuestions.length > 0;
+
+    if (aiQuestionsGenerated) {
+        allQuestions = [...allQuestions, ...aiQuestions];
+    }
 
     let currentQuestion = 0;
     const answers = {};
 
     function renderQuestion(index) {
-        console.log('Rendering question:', index);
+        console.log('renderQuestion:', index, 'of', allQuestions.length);
 
-        if (questions.length === 0) {
+        if (allQuestions.length === 0) {
             document.getElementById('questionsContainer').innerHTML =
-                '<div class="error">❌ Вопросы не загружены. Проверьте логи сервера.</div>';
+                '<div class="error-box">⚠️ Нет вопросов для отображения</div>';
+            document.getElementById('nextBtn').classList.add('hidden');
+            document.getElementById('prevBtn').style.display = 'none';
             return;
         }
 
-        if (index < 0 || index >= questions.length) {
-            console.error('Invalid question index:', index);
-            return;
-        }
+        if (index >= allQuestions.length || index < 0) return;
 
-        const q = questions[index];
+        const q = allQuestions[index];
         const container = document.getElementById('questionsContainer');
 
-        let inputHtml = '';
-        if (q.questionType === 'TEXT') {
-            inputHtml = `<textarea id="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
-        } else if (q.questionType === 'YES_NO') {
-            inputHtml = `
-                <div class="radio-group">
-                    <div class="radio-option">
-                        <label><input type="radio" name="q${q.id}" value="Да"> Да</label>
-                    </div>
-                    <div class="radio-option">
-                        <label><input type="radio" name="q${q.id}" value="Нет"> Нет</label>
-                    </div>
-                </div>`;
-        } else {
-            inputHtml = `<textarea id="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
-        }
+        let inputHtml = `<textarea name="q${q.id}" placeholder="Ваш ответ..."></textarea>`;
+
+        const categoryClass = q.isAi ? 'category-ai' : '';
+        const categoryLabel = q.isAi ? '🤖 ИИ-уточнение' : q.category;
 
         container.innerHTML = `
             <div class="question">
-                <span class="category">${q.category || 'Общее'}</span>
-                <h3>${q.orderIndex}. ${q.questionText}</h3>
+                <span class="category ${categoryClass}">${categoryLabel}</span>
+                <h3>${index + 1}. ${q.questionText}</h3>
                 ${inputHtml}
             </div>
         `;
 
-        // Обновляем прогресс
-        const progress = ((index + 1) / questions.length) * 100;
+        const totalQuestions = allQuestions.length;
+        const progress = ((index + 1) / totalQuestions) * 100;
         document.getElementById('progressBar').style.width = progress + '%';
 
-        // Кнопки
         document.getElementById('prevBtn').style.display = index > 0 ? 'inline-block' : 'none';
-        if (index === questions.length - 1) {
+
+        const isLastDoctorQuestion = index === doctorQuestions.length - 1;
+        const shouldGenerateAi = allowAiQuestions === true && !aiQuestionsGenerated;
+
+        console.log('isLastDoctorQuestion:', isLastDoctorQuestion);
+        console.log('shouldGenerateAi:', shouldGenerateAi);
+
+        if (isLastDoctorQuestion && shouldGenerateAi) {
+            document.getElementById('nextBtn').textContent = 'Далее → 🤖';
+            document.getElementById('nextBtn').classList.remove('hidden');
+            document.getElementById('completeBtn').classList.add('hidden');
+        } else if (index === allQuestions.length - 1) {
             document.getElementById('nextBtn').classList.add('hidden');
             document.getElementById('completeBtn').classList.remove('hidden');
         } else {
             document.getElementById('nextBtn').classList.remove('hidden');
             document.getElementById('completeBtn').classList.add('hidden');
+            document.getElementById('nextBtn').textContent = 'Далее →';
         }
     }
 
     function saveCurrentAnswer() {
-        const q = questions[currentQuestion];
-        let answerValue = '';
-
-        if (q.questionType === 'TEXT') {
-            const textarea = document.getElementById(`q${q.id}`);
-            answerValue = textarea ? textarea.value : '';
-        } else if (q.questionType === 'YES_NO') {
-            const radio = document.querySelector(`input[name="q${q.id}"]:checked`);
-            answerValue = radio ? radio.value : '';
-        }
-
-        if (answerValue) {
-            answers[q.id] = answerValue;
-            console.log('Saving answer:', { surveyId, questionId: q.id, answer: answerValue });
-
-            // Сохраняем на сервере (асинхронно)
+        const q = allQuestions[currentQuestion];
+        const input = document.querySelector(`textarea[name="q${q.id}"]`);
+        if (input && input.value) {
+            answers[q.id] = input.value;
             fetch(`/patient/survey/${surveyId}/answer`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `questionId=${q.id}&answerText=${encodeURIComponent(answerValue)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    console.log('✓ Answer saved successfully');
-                } else {
-                    console.error('✗ Error saving answer:', data.error);
-                }
-            })
-            .catch(err => console.error('✗ Network error:', err));
+                body: `questionId=-1&answerText=${encodeURIComponent(input.value)}&questionText=${encodeURIComponent(q.questionText)}`
+            });
         }
     }
 
     function nextQuestion() {
         saveCurrentAnswer();
-        if (currentQuestion < questions.length - 1) {
+
+        const isLastDoctorQuestion = currentQuestion === doctorQuestions.length - 1;
+        const shouldGenerateAi = allowAiQuestions === true && !aiQuestionsGenerated;
+
+        console.log('nextQuestion: currentQuestion=' + currentQuestion);
+        console.log('isLastDoctorQuestion=' + isLastDoctorQuestion + ', shouldGenerateAi=' + shouldGenerateAi);
+
+        if (isLastDoctorQuestion && shouldGenerateAi) {
+            generateAiQuestionsAndContinue();
+            return;
+        }
+
+        if (currentQuestion < allQuestions.length - 1) {
             currentQuestion++;
             renderQuestion(currentQuestion);
         }
+    }
+
+    function generateAiQuestionsAndContinue() {
+        console.log('Generating AI questions...');
+        document.getElementById('loadingOverlay').classList.add('show');
+
+        fetch(`/patient/survey/${surveyId}/generate-ai-questions`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: ''
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('AI response:', data);
+            if (data.success) {
+                const questionsArray = data.questions.split('\n\n');
+                const newAiQuestions = questionsArray.map((text, index) => ({
+                    id: 'ai_' + index,
+                    questionText: text.trim(),
+                    questionType: 'TEXT',
+                    category: 'ИИ-уточнение',
+                    isAi: true
+                }));
+
+                allQuestions = [...allQuestions, ...newAiQuestions];
+                aiQuestionsGenerated = true;
+
+                currentQuestion++;
+                renderQuestion(currentQuestion);
+            } else {
+                alert('⚠️ Не удалось сгенерировать ИИ-вопросы: ' + data.error);
+                currentQuestion++;
+                renderQuestion(currentQuestion);
+            }
+        })
+        .catch(err => {
+            alert('⚠️ Ошибка сети');
+            console.error(err);
+            currentQuestion++;
+            renderQuestion(currentQuestion);
+        })
+        .finally(() => {
+            document.getElementById('loadingOverlay').classList.remove('show');
+        });
     }
 
     function prevQuestion() {
@@ -180,7 +268,7 @@
 
     function completeSurvey() {
         saveCurrentAnswer();
-        if (confirm('Завершить опрос? После этого вы не сможете изменить ответы.')) {
+        if (confirm('Завершить опрос?')) {
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = `/patient/survey/${surveyId}/complete`;
@@ -189,21 +277,9 @@
         }
     }
 
-    function showError(message) {
-        const errorContainer = document.getElementById('errorContainer');
-        errorContainer.textContent = message;
-        errorContainer.classList.remove('hidden');
-    }
-
-    // Инициализация при загрузке страницы
-    console.log('=== Initializing Survey ===');
-    if (questions.length > 0) {
-        renderQuestion(0);
-        console.log('✓ First question rendered');
-    } else {
-        showError('❌ Вопросы не загружены. Обратитесь к администратору.');
-        console.error('✗ No questions loaded!');
-    }
+    // Старт - первый вопрос
+    console.log('=== Starting Survey ===');
+    renderQuestion(0);
 </script>
 </body>
 </html>

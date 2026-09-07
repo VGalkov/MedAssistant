@@ -17,7 +17,19 @@
         .panel-content { padding: 20px; }
         .form-group { margin-bottom: 20px; }
         .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #333; }
-        .form-group textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: 'Consolas', 'Monaco', monospace; min-height: 300px; resize: vertical; line-height: 1.6; }
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit; /* ✅ Используем шрифт системы для поддержки кириллицы */
+            min-height: 300px;
+            resize: vertical;
+            line-height: 1.6;
+            white-space: pre-wrap; /* ✅ Сохраняем пробелы и переносы */
+            overflow-wrap: break-word;
+        }
         .form-group textarea:focus { outline: none; border-color: #1a73e8; }
         .form-group small { display: block; margin-top: 8px; color: #666; font-size: 13px; }
         .checkbox-group { display: flex; align-items: flex-start; gap: 10px; padding: 15px; background: #e8f0fe; border-radius: 6px; margin-bottom: 20px; }
@@ -34,15 +46,8 @@
         .scenario-info { background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .scenario-info h3 { margin-bottom: 10px; color: #1a73e8; }
         .scenario-info p { margin: 5px 0; color: #555; }
-        .preview { background: #fafafa; padding: 15px; border-radius: 6px; margin-top: 15px; border: 1px solid #eee; }
-        .preview h4 { margin-bottom: 10px; color: #555; font-size: 14px; }
-        .preview ul { margin-left: 20px; }
-        .preview li { margin: 5px 0; color: #333; }
         .success-message { background: #d4edda; color: #155724; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
         .error-message { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
-        .ai-info { background: linear-gradient(135deg, #f3e5f5 0%, #e8f0fe 100%); border: 2px solid #9c27b0; padding: 20px; border-radius: 8px; margin-top: 20px; }
-        .ai-info h4 { color: #9c27b0; margin-bottom: 10px; }
-        .ai-info p { color: #555; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -57,17 +62,23 @@
         <p th:if="${scenario.specialty != null}"><strong>Специальность:</strong> <span th:text="${scenario.specialty}"></span></p>
     </div>
 
-    <div th:if="${success}" class="success-message">✅ Изменения сохранены</div>
-    <div th:if="${error}" class="error-message">❌ <span th:text="${error}"></span></div>
+    <!-- Сообщение об успехе -->
+    <div th:if="${success}" class="success-message">
+        ✅ Изменения сохранены
+    </div>
+    <div th:if="${error}" class="error-message">
+        ❌ <span th:text="${error}"></span>
+    </div>
 
     <form id="editForm" method="POST" th:action="@{/doctor/scenario/{id}/edit-questions(id=${scenario.id})}">
         <div class="panel">
-            <div class="panel-header">📝 Вопросы доктора</div>
+            <div class="panel-header">📝 Вопросы пациенту</div>
             <div class="panel-content">
                 <div class="form-group">
                     <label for="doctorQuestionsText">Текст вопросов:</label>
-                    <textarea id="doctorQuestionsText" name="doctorQuestionsText"
-                              placeholder="Что вас беспокоит? Опишите основные симптомы.&#10;&#10;Как давно начались симптомы?&#10;&#10;Принимаете ли вы какие-либо препараты постоянно?"
+                    <textarea id="doctorQuestionsText"
+                              name="doctorQuestionsText"
+                              placeholder="Что вас беспокоит? Опишите основные симптомы.&#10;&#10;Как давно начались симптомы?&#10;&#10;Принимаете ли вы какие-либо препараты постоянно?&#10;&#10;Есть ли у вас аллергии?&#10;&#10;Есть ли у вас хронические заболевания?"
                               th:text="${scenario.doctorQuestionsText}"></textarea>
                     <small>
                         ✅ Каждый вопрос должен:<br>
@@ -97,62 +108,32 @@
         </div>
     </form>
 
-    <div class="ai-info">
-        <h4>🤖 Как работают ИИ-вопросы</h4>
-        <p>
-            Если галочка включена, после того как пациент ответит на все ваши вопросы,
-            система отправит ответы в LM Studio и сгенерирует <strong>3 уточняющих вопроса</strong>.
-            Эти вопросы будут показаны пациенту для более полной картины перед приёмом.
-        </p>
-        <p style="margin-top: 10px; color: #666;">
-            ⚠️ ИИ-вопросы генерируются динамически на основе ответов пациента, а не заранее.
-        </p>
-    </div>
-
     <div class="panel" th:if="${scenario.doctorQuestionsText != null and scenario.doctorQuestionsText != ''}">
         <div class="panel-header">👁️ Предпросмотр вопросов</div>
         <div class="panel-content">
-            <div class="preview">
-                <h4>Пациенту будут заданы следующие вопросы:</h4>
-                <ul>
+            <div style="background: #fafafa; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
+                <h4 style="margin-bottom: 10px; color: #555; font-size: 14px;">Пациенту будут заданы следующие вопросы:</h4>
+                <ol style="margin-left: 20px; line-height: 1.8;">
                     <li th:each="line : ${#strings.arraySplit(scenario.doctorQuestionsText, '\n')}"
                         th:if="${line != null and line.trim() != ''}"
-                        th:text="${line.trim()}">Вопрос</li>
-                    <li th:if="${scenario.allowAiQuestions}"
-                        style="color: #9c27b0; font-weight: 600;">
-                        🤖 [+ 3 ИИ-вопроса будут сгенерированы после ответов пациента]
-                    </li>
-                </ul>
+                        th:text="${line.trim()}"
+                        style="margin: 5px 0; color: #333;">Вопрос</li>
+                </ol>
+                <div th:if="${scenario.allowAiQuestions}"
+                     style="margin-top: 15px; padding: 10px; background: #f3e5f5; border-left: 4px solid #9c27b0; border-radius: 4px;">
+                    <strong style="color: #9c27b0;">🤖 + 3 ИИ-вопроса</strong>
+                    <p style="color: #666; font-size: 13px; margin-top: 5px;">
+                        Будут сгенерированы автоматически после ответов на вопросы доктора
+                    </p>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    document.getElementById('doctorQuestionsText').addEventListener('input', function(e) {
-        const textarea = e.target;
-        const lines = textarea.value.split('\n');
-        const formatted = lines.map(line => {
-            line = line.trim();
-            if (line === '') return '';
-            if (line.length > 0) {
-                line = line.charAt(0).toUpperCase() + line.slice(1);
-            }
-            if (!line.endsWith('?')) {
-                line = line.replace(/[.!,;:]*$/, '') + '?';
-            }
-            return line;
-        }).filter((line, index, arr) => {
-            if (line === '' && index > 0 && arr[index - 1] === '') {
-                return false;
-            }
-            return true;
-        }).join('\n');
-
-        if (textarea.value !== formatted) {
-            textarea.value = formatted;
-        }
-    });
+    // ✅ УДАЛЕНО автоматическое форматирование которое мешало вводу!
+    // Теперь можно нормально печатать на русском языке и использовать Enter
 </script>
 </body>
 </html>

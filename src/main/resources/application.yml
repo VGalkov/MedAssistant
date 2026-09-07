@@ -1,35 +1,79 @@
+# ===========================================
+# НАСТРОЙКИ СЕРВЕРА
+# ===========================================
 server:
+  # Порт приложения (можно менять)
   port: 8080
 
+  # Адрес прослушивания:
+  # 0.0.0.0 - все сетевые интерфейсы (доступно по сети)
+  # localhost или 127.0.0.1 - только локально
+  # 10.0.3.10 - конкретный IP адрес
+  address: 0.0.0.0
+
+# ===========================================
+# НАСТРОЙКИ ПРИЛОЖЕНИЯ
+# ===========================================
 spring:
+  application:
+    name: medassistant
+
   datasource:
-    url: jdbc:h2:file:./data/medassistant_db  # было: jdbc:h2:mem:medassistant_db
+    # H2 база данных в памяти
+    url: jdbc:h2:mem:medassistant_db
     driverClassName: org.h2.Driver
     username: sa
     password:
+
   h2:
     console:
       enabled: true
       path: /h2-console
+      # Разрешить доступ к консоли H2 из сети
+      settings:
+        web-allow-others: true
+
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
-      ddl-auto: update  # было: update (оставьте)
-    show-sql: true
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
+
   thymeleaf:
     cache: false
     prefix: classpath:/templates/
     suffix: .html
 
-# LM Studio конфигурация
-lmstudio:
-  base-url: http://10.0.3.10:1234
-  model: gemma-2-2b-it
+# ===========================================
+# НАСТРОЙКИ ЛОГИРОВАНИЯ
+# ===========================================
+logging:
+  level:
+    root: INFO
+    ru.medassistant: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
-# Настройки приложения
+# ===========================================
+# LM STUDIO КОНФИГУРАЦИЯ
+# ===========================================
+lmstudio:
+  # Адрес LM Studio (можно менять)
+  # Если LM Studio на том же сервере: http://localhost:1234
+  # Если на другом: http://<IP-адрес>:1234
+  base-url: http://localhost:1234
+  # Название модели
+  model: local-model
+
+# ===========================================
+# ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ
+# ===========================================
 app:
+  # Название клиники (отображается в интерфейсе)
   clinic-name: Медицинская клиника
+  # Максимальный возраст опроса в днях
   max-survey-age-days: 7

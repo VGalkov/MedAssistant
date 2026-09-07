@@ -22,9 +22,13 @@ public class SurveyAnswer {
     private Survey survey;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "question_id", nullable = false)
+    @JoinColumn(name = "question_id")
     @ToString.Exclude
     private ScenarioQuestion question;
+
+    // ✅ Поле для хранения текста вопроса (для вопросов доктора/ИИ)
+    @Column(length = 1000)
+    private String questionText;
 
     @Column(nullable = false, length = 2000)
     private String answerText;

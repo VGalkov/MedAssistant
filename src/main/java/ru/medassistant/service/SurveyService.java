@@ -1,5 +1,7 @@
 package ru.medassistant.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.medassistant.model.*;
@@ -11,6 +13,8 @@ import java.util.*;
 @Service
 @Transactional
 public class SurveyService {
+
+    private static final Logger logger = LoggerFactory.getLogger(SurveyService.class);
 
     private final SurveyRepository surveyRepository;
     private final PatientRepository patientRepository;
@@ -45,72 +49,118 @@ public class SurveyService {
      * @param questionText текст вопроса (для вопросов доктора/ИИ)
      */
     public void addAnswer(Long surveyId, Long questionId, String answerText, String questionText) {
+        logger.info("addAnswer: surveyId={}, questionId={}, questionText={}, answerLength={}",
+                surveyId, questionId, questionText, answerText.length());
+
         Survey survey = surveyRepository.findById(surveyId)
                 .orElseThrow(() -> new RuntimeException("Опрос не найден"));
 
-        ScenarioQuestion question;
-
-        if (questionId != null && questionId > 0) {
-            question = new ScenarioQuestion();
-            question.setId(questionId);
-        } else {
-            question = new ScenarioQuestion();
-            question.setQuestionText(questionText != null ? questionText : "Вопрос");
-            question.setCategory("Дополнительно");
-        }
-
         SurveyAnswer answer = new SurveyAnswer();
         answer.setSurvey(survey);
-        answer.setQuestion(question);
         answer.setAnswerText(answerText);
         answer.setAnsweredAt(LocalDateTime.now());
 
+        if (questionId != null && questionId > 0) {
+            // Стандартный вопрос из БД — сохраняем ссылку
+            ScenarioQuestion question = new ScenarioQuestion();
+            question.setId(questionId);
+            answer.setQuestion(question);
+            answer.setQuestionText(null); // Будет загружено из БД при чтении
+            logger.info("Answer linked to question ID: {}", questionId);
+        } else {
+            // Вопрос доктора или ИИ — сохраняем текст напрямую
+            answer.setQuestion(null);
+            answer.setQuestionText(questionText != null ? questionText : "Вопрос");
+            logger.info("Answer saved with questionText: {}", answer.getQuestionText());
+        }
+
         survey.getAnswers().add(answer);
         surveyRepository.save(survey);
+
+        logger.info("Answer saved. Total answers in survey: {}", survey.getAnswers().size());
     }
 
+    /**
+     * Перегруженная версия для обратной совместимости
+     */
     public void addAnswer(Long surveyId, Long questionId, String answerText) {
         addAnswer(surveyId, questionId, answerText, null);
     }
 
     public Survey completeSurvey(Long surveyId) {
+        logger.info("=== completeSurvey: {} ===", surveyId);
+
         Survey survey = surveyRepository.findById(surveyId)
                 .orElseThrow(() -> new RuntimeException("Опрос не найден"));
 
+        logger.info("Survey has {} answers", survey.getAnswers().size());
+
         StringBuilder originalText = new StringBuilder();
         for (SurveyAnswer answer : survey.getAnswers()) {
-            String questionText = answer.getQuestion().getQuestionText();
-            if (questionText == null) {
-                questionText = "Вопрос";
+            // Сначала пробуем получить текст из поля questionText
+            String questionText = answer.getQuestionText();
+
+            // Если пусто, пробуем загрузить из question
+            if (questionText == null && answer.getQuestion() != null) {
+                questionText = answer.getQuestion().getQuestionText();
             }
+
+            String answerText = answer.getAnswerText();
+
+            logger.info("Answer: questionText='{}', answerLength={}",
+                    questionText, answerText != null ? answerText.length() : 0);
+
+            if (questionText == null) {
+                questionText = "[Вопрос не указан]";
+            }
+            if (answerText == null) {
+                answerText = "[Нет ответа]";
+            }
+
             originalText.append(questionText)
                     .append(": ")
-                    .append(answer.getAnswerText())
+                    .append(answerText)
                     .append("\n");
         }
 
-        survey.setOriginalText(originalText.toString());
+        String originalTextStr = originalText.toString();
+        logger.info("Original text ({} chars): {}", originalTextStr.length(),
+                originalTextStr.substring(0, Math.min(200, originalTextStr.length())));
+
+        survey.setOriginalText(originalTextStr);
         survey.setStatus("COMPLETED");
         survey.setCompletedAt(LocalDateTime.now());
 
-        String processedText = lmStudioService.processSurveyText(originalText.toString());
+        // Шаг 1: Структурирование
+        logger.info("Calling processSurveyText...");
+        String processedText = lmStudioService.processSurveyText(originalTextStr);
+        logger.info("Processed text: {}", processedText);
         survey.setProcessedText(processedText);
 
+        // Шаг 2: История пациента
         String patientHistory = getPatientHistory(survey.getPatient().getId(), surveyId);
+        logger.info("Patient history: {}", patientHistory != null ? "found" : "not found");
 
+        // Шаг 3: Рекомендации
+        logger.info("Calling generateRecommendations...");
         String recommendations = lmStudioService.generateRecommendations(
-                originalText.toString(),
+                originalTextStr,
                 processedText,
                 patientHistory
         );
+        logger.info("Recommendations: {}", recommendations);
         survey.setAiRecommendations(recommendations);
 
+        // Шаг 4: Подозрения
+        logger.info("Calling detectSuspicionFlags...");
         String suspicionFlags = lmStudioService.detectSuspicionFlags(
-                originalText.toString(),
+                originalTextStr,
                 patientHistory
         );
+        logger.info("Suspicion flags: {}", suspicionFlags);
         survey.setAiSuspicionFlags(suspicionFlags);
 
+        logger.info("=== Survey completed successfully ===");
         return surveyRepository.save(survey);
     }
 
@@ -150,6 +200,9 @@ public class SurveyService {
         return surveyRepository.findById(surveyId);
     }
 
+    /**
+     * Сохранение опроса
+     */
     public void saveSurvey(Survey survey) {
         surveyRepository.save(survey);
     }

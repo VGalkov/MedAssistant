@@ -69,24 +69,19 @@
 </div>
 
 <script th:inline="javascript">
-    // Данные из сервера через Thymeleaf
+    // Данные от сервера
     const surveyId = /*[[${survey.id}]]*/ 0;
     const allowAiQuestions = /*[[${allowAiQuestions}]]*/ false;
-
-    // Вопросы доктора - массив строк
     const doctorQuestionsText = /*[[${doctorQuestions}]]*/ [];
-
-    // ИИ-вопросы (если уже сгенерированы)
     const aiQuestionsText = /*[[${aiQuestions}]]*/ [];
 
-    console.log('=== Survey Page Loaded ===');
+    console.log('=== Survey Initialized ===');
     console.log('surveyId:', surveyId);
     console.log('allowAiQuestions:', allowAiQuestions);
     console.log('doctorQuestionsText:', doctorQuestionsText);
-    console.log('doctorQuestionsText.length:', doctorQuestionsText ? doctorQuestionsText.length : 0);
     console.log('aiQuestionsText:', aiQuestionsText);
 
-    // Формируем вопросы доктора как объекты
+    // Формируем вопросы доктора
     const doctorQuestions = [];
     if (doctorQuestionsText && doctorQuestionsText.length > 0) {
         for (let i = 0; i < doctorQuestionsText.length; i++) {
@@ -114,10 +109,10 @@
         }
     }
 
-    console.log('doctorQuestions (parsed):', doctorQuestions);
-    console.log('aiQuestions (parsed):', aiQuestions);
+    console.log('Parsed doctorQuestions:', doctorQuestions.length);
+    console.log('Parsed aiQuestions:', aiQuestions.length);
 
-    // Начинаем только с вопросов доктора
+    // Все вопросы
     let allQuestions = [...doctorQuestions];
     let aiQuestionsGenerated = aiQuestions.length > 0;
 
@@ -125,15 +120,17 @@
         allQuestions = [...allQuestions, ...aiQuestions];
     }
 
+    console.log('Total questions:', allQuestions.length);
+
     let currentQuestion = 0;
-    const answers = {};
+    const savedAnswers = {};
 
     function renderQuestion(index) {
-        console.log('renderQuestion:', index, 'of', allQuestions.length);
+        console.log('renderQuestion:', index);
 
         if (allQuestions.length === 0) {
             document.getElementById('questionsContainer').innerHTML =
-                '<div class="error-box">⚠️ Нет вопросов для отображения</div>';
+                '<div class="error-box">⚠️ Нет вопросов</div>';
             document.getElementById('nextBtn').classList.add('hidden');
             document.getElementById('prevBtn').style.display = 'none';
             return;
@@ -144,20 +141,20 @@
         const q = allQuestions[index];
         const container = document.getElementById('questionsContainer');
 
-        let inputHtml = '<textarea name="q' + q.id + '" placeholder="Ваш ответ..."></textarea>';
-
         const categoryClass = q.isAi ? 'category-ai' : '';
         const categoryLabel = q.isAi ? '🤖 ИИ-уточнение' : q.category;
+
+        // Проверяем, есть ли сохранённый ответ
+        const savedAnswer = savedAnswers[q.id] || '';
 
         container.innerHTML =
             '<div class="question">' +
                 '<span class="category ' + categoryClass + '">' + categoryLabel + '</span>' +
                 '<h3>' + (index + 1) + '. ' + q.questionText + '</h3>' +
-                inputHtml +
+                '<textarea name="q' + q.id + '" placeholder="Ваш ответ...">' + savedAnswer + '</textarea>' +
             '</div>';
 
-        const totalQuestions = allQuestions.length;
-        const progress = ((index + 1) / totalQuestions) * 100;
+        const progress = ((index + 1) / allQuestions.length) * 100;
         document.getElementById('progressBar').style.width = progress + '%';
 
         document.getElementById('prevBtn').style.display = index > 0 ? 'inline-block' : 'none';
@@ -165,8 +162,7 @@
         const isLastDoctorQuestion = index === doctorQuestions.length - 1;
         const shouldGenerateAi = allowAiQuestions === true && !aiQuestionsGenerated;
 
-        console.log('isLastDoctorQuestion:', isLastDoctorQuestion);
-        console.log('shouldGenerateAi:', shouldGenerateAi);
+        console.log('isLastDoctorQuestion:', isLastDoctorQuestion, 'shouldGenerateAi:', shouldGenerateAi);
 
         if (isLastDoctorQuestion && shouldGenerateAi) {
             document.getElementById('nextBtn').textContent = 'Далее → 🤖';
@@ -185,24 +181,37 @@
     function saveCurrentAnswer() {
         const q = allQuestions[currentQuestion];
         const input = document.querySelector('textarea[name="q' + q.id + '"]');
-        if (input && input.value) {
-            answers[q.id] = input.value;
-            fetch('/patient/survey/' + surveyId + '/answer', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: 'questionId=-1&answerText=' + encodeURIComponent(input.value) + '&questionText=' + encodeURIComponent(q.questionText)
-            });
+
+        if (input) {
+            const answerText = input.value.trim();
+            console.log('saveCurrentAnswer: question=' + q.id + ', answer length=' + answerText.length);
+
+            if (answerText) {
+                savedAnswers[q.id] = answerText;
+
+                // Сохраняем на сервере
+                fetch('/patient/survey/' + surveyId + '/answer', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'questionId=-1&answerText=' + encodeURIComponent(answerText) + '&questionText=' + encodeURIComponent(q.questionText)
+                })
+                .then(r => r.json())
+                .then(data => {
+                    console.log('Answer saved:', data);
+                })
+                .catch(err => {
+                    console.error('Error saving answer:', err);
+                });
+            }
         }
     }
 
     function nextQuestion() {
+        console.log('nextQuestion: current=' + currentQuestion);
         saveCurrentAnswer();
 
         const isLastDoctorQuestion = currentQuestion === doctorQuestions.length - 1;
         const shouldGenerateAi = allowAiQuestions === true && !aiQuestionsGenerated;
-
-        console.log('nextQuestion: currentQuestion=' + currentQuestion);
-        console.log('isLastDoctorQuestion=' + isLastDoctorQuestion + ', shouldGenerateAi=' + shouldGenerateAi);
 
         if (isLastDoctorQuestion && shouldGenerateAi) {
             generateAiQuestionsAndContinue();
@@ -216,7 +225,7 @@
     }
 
     function generateAiQuestionsAndContinue() {
-        console.log('Generating AI questions...');
+        console.log('generateAiQuestionsAndContinue: Starting AI generation...');
         document.getElementById('loadingOverlay').classList.add('show');
 
         fetch('/patient/survey/' + surveyId + '/generate-ai-questions', {
@@ -224,11 +233,16 @@
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: ''
         })
-        .then(function(response) { return response.json(); })
+        .then(function(response) {
+            console.log('AI response status:', response.status);
+            return response.json();
+        })
         .then(function(data) {
-            console.log('AI response:', data);
+            console.log('AI response data:', data);
             if (data.success) {
                 const questionsArray = data.questions.split('\n\n');
+                console.log('Parsed AI questions:', questionsArray.length);
+
                 const newAiQuestions = [];
                 for (let i = 0; i < questionsArray.length; i++) {
                     newAiQuestions.push({
@@ -243,6 +257,8 @@
                 allQuestions = allQuestions.concat(newAiQuestions);
                 aiQuestionsGenerated = true;
 
+                console.log('New total questions:', allQuestions.length);
+
                 currentQuestion++;
                 renderQuestion(currentQuestion);
             } else {
@@ -252,8 +268,8 @@
             }
         })
         .catch(function(err) {
-            alert('⚠️ Ошибка сети');
-            console.error(err);
+            console.error('AI generation error:', err);
+            alert('⚠️ Ошибка сети при генерации ИИ-вопросов');
             currentQuestion++;
             renderQuestion(currentQuestion);
         })
@@ -263,6 +279,7 @@
     }
 
     function prevQuestion() {
+        console.log('prevQuestion: current=' + currentQuestion);
         saveCurrentAnswer();
         if (currentQuestion > 0) {
             currentQuestion--;
@@ -271,19 +288,44 @@
     }
 
     function completeSurvey() {
+        console.log('completeSurvey: Saving final answer...');
         saveCurrentAnswer();
-        if (confirm('Завершить опрос?')) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/patient/survey/' + surveyId + '/complete';
-            document.body.appendChild(form);
-            form.submit();
-        }
+
+        // Небольшая задержка чтобы все ответы успели сохраниться
+        setTimeout(function() {
+            if (confirm('Завершить опрос? После этого вы не сможете изменить ответы.')) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/patient/survey/' + surveyId + '/complete';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }, 500);
     }
 
-    // Старт - первый вопрос
-    console.log('=== Starting Survey ===');
-    renderQuestion(0);
+    // Загрузка сохранённых ответов с сервера при инициализации
+    function loadSavedAnswers() {
+        console.log('loadSavedAnswers: Loading from server...');
+        fetch('/patient/survey/' + surveyId + '/answers')
+            .then(r => r.json())
+            .then(data => {
+                console.log('Loaded saved answers:', data);
+                if (data && data.answers) {
+                    for (let i = 0; i < data.answers.length; i++) {
+                        const ans = data.answers[i];
+                        savedAnswers[ans.questionId] = ans.answerText;
+                    }
+                }
+                renderQuestion(0);
+            })
+            .catch(err => {
+                console.error('Error loading saved answers:', err);
+                renderQuestion(0);
+            });
+    }
+
+    // Старт
+    loadSavedAnswers();
 </script>
 </body>
 </html>

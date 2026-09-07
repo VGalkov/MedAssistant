@@ -9,7 +9,7 @@ import ru.medassistant.model.*;
 import ru.medassistant.repository.*;
 import ru.medassistant.service.LmStudioService;
 import ru.medassistant.service.SurveyService;
-
+import ru.medassistant.model.SurveyAnswer;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -48,11 +48,9 @@ public class PatientController {
         logger.info("Registering patient: {} {}", patient.getFirstName(), patient.getLastName());
 
         try {
-            // Сохраняем пациента (всегда нового)
             Patient savedPatient = patientRepository.save(patient);
             logger.info("Patient created with id: {}, phone: {}", savedPatient.getId(), savedPatient.getPhone());
 
-            // Получаем активный сценарий
             List<Scenario> scenarios = scenarioRepository.findByIsActiveTrueOrderByCreatedAtDesc();
             Scenario scenario;
             if (scenarios.isEmpty()) {
@@ -63,7 +61,6 @@ public class PatientController {
                 logger.info("Using existing scenario: id={}, name={}", scenario.getId(), scenario.getName());
             }
 
-            // Создаём НОВЫЙ опрос для этого пациента
             Survey survey = surveyService.createSurvey(savedPatient.getId(), scenario.getId());
             logger.info("Survey created with id: {} for patient id: {}", survey.getId(), savedPatient.getId());
 
@@ -94,7 +91,6 @@ public class PatientController {
             model.addAttribute("scenario", scenario);
             model.addAttribute("allowAiQuestions", Boolean.TRUE.equals(scenario.getAllowAiQuestions()));
 
-            // Парсим вопросы доктора из БД
             List<String> doctorQuestions = List.of();
             String doctorQuestionsText = scenario.getDoctorQuestionsText();
 
@@ -108,7 +104,6 @@ public class PatientController {
             }
             model.addAttribute("doctorQuestions", doctorQuestions);
 
-            // Проверяем, сгенерированы ли уже ИИ-вопросы
             if (survey.getAiGeneratedQuestionsText() != null && !survey.getAiGeneratedQuestionsText().trim().isEmpty()) {
                 List<String> aiQuestions = parseQuestions(survey.getAiGeneratedQuestionsText());
                 model.addAttribute("aiQuestions", aiQuestions);
@@ -129,6 +124,58 @@ public class PatientController {
         }
     }
 
+    /**
+     * Загрузка сохранённых ответов для опроса
+     */
+    @GetMapping("/survey/{id}/answers")
+    @ResponseBody
+    public String getSavedAnswers(@PathVariable Long id) {
+        logger.info("=== GET /patient/survey/{}/answers ===", id);
+
+        try {
+            Optional<Survey> surveyOpt = surveyService.getSurveyById(id);
+            if (surveyOpt.isEmpty()) {
+                return "{\"answers\": []}";
+            }
+
+            Survey survey = surveyOpt.get();
+            StringBuilder json = new StringBuilder("{\"answers\": [");
+
+            boolean first = true;
+            for (SurveyAnswer answer : survey.getAnswers()) {
+                if (!first) json.append(",");
+                first = false;
+
+                // Сначала пробуем questionText, потом question.questionText
+                String questionId = answer.getQuestionText();
+                if (questionId == null && answer.getQuestion() != null) {
+                    questionId = answer.getQuestion().getQuestionText();
+                }
+                if (questionId == null) {
+                    questionId = "unknown";
+                }
+                questionId = questionId.replace("\"", "\\\"");
+
+                String answerText = answer.getAnswerText() != null ?
+                        answer.getAnswerText().replace("\"", "\\\"") : "";
+
+                json.append("{\"questionId\":\"")
+                        .append(questionId)
+                        .append("\",\"answerText\":\"")
+                        .append(answerText)
+                        .append("\"}");
+            }
+
+            json.append("]}");
+            logger.info("Returning {} answers", survey.getAnswers().size());
+            return json.toString();
+
+        } catch (Exception e) {
+            logger.error("Error loading answers", e);
+            return "{\"answers\": [], \"error\": \"" + e.getMessage() + "\"}";
+        }
+    }
+
     @PostMapping("/survey/{id}/generate-ai-questions")
     @ResponseBody
     public String generateAiQuestions(@PathVariable Long id) {
@@ -138,26 +185,35 @@ public class PatientController {
             Survey survey = surveyService.getSurveyById(id)
                     .orElseThrow(() -> new RuntimeException("Опрос не найден: " + id));
 
+            logger.info("Survey has {} answers", survey.getAnswers().size());
+
             StringBuilder patientAnswers = new StringBuilder();
             for (SurveyAnswer answer : survey.getAnswers()) {
                 String questionText = answer.getQuestion().getQuestionText();
+                String answerText = answer.getAnswerText();
+
                 if (questionText == null) {
                     questionText = "Вопрос";
                 }
+                if (answerText == null) {
+                    answerText = "[Нет ответа]";
+                }
+
                 patientAnswers.append(questionText)
                         .append(": ")
-                        .append(answer.getAnswerText())
+                        .append(answerText)
                         .append("\n");
             }
 
             logger.info("Generating AI questions based on {} characters", patientAnswers.length());
+            logger.info("Patient answers: {}", patientAnswers.toString().substring(0, Math.min(200, patientAnswers.length())));
 
             String aiQuestions = lmStudioService.generateAiClarifyingQuestions(patientAnswers.toString());
 
             survey.setAiGeneratedQuestionsText(aiQuestions);
             surveyService.saveSurvey(survey);
 
-            logger.info("✓ AI questions generated");
+            logger.info("✓ AI questions generated: {}", aiQuestions);
 
             com.fasterxml.jackson.databind.ObjectMapper mapper =
                     new com.fasterxml.jackson.databind.ObjectMapper();
@@ -175,13 +231,16 @@ public class PatientController {
                              @RequestParam Long questionId,
                              @RequestParam String answerText,
                              @RequestParam(required = false) String questionText) {
-        logger.debug("Saving answer for survey: {}, question: {}", id, questionId);
+        logger.info("Saving answer for survey: {}, questionId: {}, questionText: '{}', answerLength: {}",
+                id, questionId, questionText, answerText.length());
 
         try {
             if (questionText != null && !questionText.trim().isEmpty()) {
                 surveyService.addAnswer(id, questionId, answerText, questionText);
+                logger.info("✓ Answer saved with questionText");
             } else {
                 surveyService.addAnswer(id, questionId, answerText);
+                logger.info("✓ Answer saved without questionText");
             }
             return "{\"success\": true}";
         } catch (Exception e) {
@@ -192,21 +251,28 @@ public class PatientController {
 
     @PostMapping("/survey/{id}/complete")
     public String completeSurvey(@PathVariable Long id) {
-        logger.info("Completing survey: {}", id);
+        logger.info("=== Completing survey: {} ===", id);
 
         try {
+            Survey survey = surveyService.getSurveyById(id).orElse(null);
+            if (survey != null) {
+                logger.info("Survey has {} answers before complete", survey.getAnswers().size());
+                for (SurveyAnswer ans : survey.getAnswers()) {
+                    logger.info("  - Question: '{}', Answer: '{}'",
+                            ans.getQuestion().getQuestionText(),
+                            ans.getAnswerText());
+                }
+            }
+
             surveyService.completeSurvey(id);
-            logger.info("Survey completed successfully: {}", id);
+            logger.info("✓ Survey completed successfully: {}", id);
             return "patient/completed";
         } catch (Exception e) {
-            logger.error("Error completing survey: {}", id, e);
+            logger.error("❌ Error completing survey: {}", id, e);
             return "patient/survey";
         }
     }
 
-    /**
-     * Парсит вопросы из текста (разделитель - ДВОЙНОЙ перенос строки)
-     */
     private List<String> parseQuestions(String text) {
         if (text == null || text.trim().isEmpty()) {
             return List.of();

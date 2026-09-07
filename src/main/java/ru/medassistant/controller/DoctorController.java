@@ -2,12 +2,14 @@ package ru.medassistant.controller;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import ru.medassistant.model.Scenario;
 import ru.medassistant.model.Survey;
 import ru.medassistant.repository.ScenarioRepository;
+import ru.medassistant.service.PromptService;
 import ru.medassistant.service.SurveyService;
 
 import java.util.List;
@@ -20,16 +22,22 @@ public class DoctorController {
 
     private final SurveyService surveyService;
     private final ScenarioRepository scenarioRepository;
+    private final PromptService promptService;
 
-    public DoctorController(SurveyService surveyService, ScenarioRepository scenarioRepository) {
+    public DoctorController(SurveyService surveyService,
+                            ScenarioRepository scenarioRepository,
+                            @Autowired PromptService promptService) {
         this.surveyService = surveyService;
         this.scenarioRepository = scenarioRepository;
+        this.promptService = promptService;
     }
 
     @GetMapping
     public String dashboard(Model model) {
         List<Survey> surveys = surveyService.getSurveysForDoctor();
         model.addAttribute("surveys", surveys);
+        model.addAttribute("usingExternalPrompts", promptService.isUsingExternalPrompts());
+        model.addAttribute("promptsDirectory", promptService.getPromptsDirectory());
         return "doctor/dashboard";
     }
 
@@ -84,6 +92,27 @@ public class DoctorController {
             model.addAttribute("error", "Ошибка: " + e.getMessage());
             return "doctor/edit-questions";
         }
+    }
+
+    /**
+     * Перезагрузка промптов (конфигурации ИИ)
+     */
+    @PostMapping("/prompts/reload")
+    @ResponseBody
+    public String reloadPrompts() {
+        logger.info("=== Reloading prompts configuration ===");
+        promptService.clearCache();
+
+        boolean external = promptService.isUsingExternalPrompts();
+        String directory = promptService.getPromptsDirectory();
+
+        logger.info("✅ Prompts reloaded. External: {}, Directory: {}", external, directory);
+
+        return String.format(
+                "{\"success\": true, \"message\": \"Промпты перезагружены\", \"external\": %b, \"directory\": \"%s\"}",
+                external,
+                directory.replace("\\", "\\\\")
+        );
     }
 
     @PostMapping("/survey/{id}/comment")

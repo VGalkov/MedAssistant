@@ -69,19 +69,17 @@
 </div>
 
 <script th:inline="javascript">
-    // Данные от сервера
     const surveyId = /*[[${survey.id}]]*/ 0;
     const allowAiQuestions = /*[[${allowAiQuestions}]]*/ false;
     const doctorQuestionsText = /*[[${doctorQuestions}]]*/ [];
     const aiQuestionsText = /*[[${aiQuestions}]]*/ [];
 
-    console.log('=== Survey Initialized ===');
+    console.log('=== Survey Page Loaded ===');
     console.log('surveyId:', surveyId);
     console.log('allowAiQuestions:', allowAiQuestions);
     console.log('doctorQuestionsText:', doctorQuestionsText);
     console.log('aiQuestionsText:', aiQuestionsText);
 
-    // Формируем вопросы доктора
     const doctorQuestions = [];
     if (doctorQuestionsText && doctorQuestionsText.length > 0) {
         for (let i = 0; i < doctorQuestionsText.length; i++) {
@@ -95,7 +93,6 @@
         }
     }
 
-    // Формируем ИИ-вопросы (если уже сгенерированы)
     const aiQuestions = [];
     if (aiQuestionsText && aiQuestionsText.length > 0) {
         for (let i = 0; i < aiQuestionsText.length; i++) {
@@ -109,10 +106,9 @@
         }
     }
 
-    console.log('Parsed doctorQuestions:', doctorQuestions.length);
-    console.log('Parsed aiQuestions:', aiQuestions.length);
+    console.log('doctorQuestions:', doctorQuestions);
+    console.log('aiQuestions:', aiQuestions);
 
-    // Все вопросы
     let allQuestions = [...doctorQuestions];
     let aiQuestionsGenerated = aiQuestions.length > 0;
 
@@ -120,17 +116,12 @@
         allQuestions = [...allQuestions, ...aiQuestions];
     }
 
-    console.log('Total questions:', allQuestions.length);
-
     let currentQuestion = 0;
-    const savedAnswers = {};
 
     function renderQuestion(index) {
-        console.log('renderQuestion:', index);
-
         if (allQuestions.length === 0) {
             document.getElementById('questionsContainer').innerHTML =
-                '<div class="error-box">⚠️ Нет вопросов</div>';
+                '<div class="error-box">⚠️ Нет вопросов для отображения</div>';
             document.getElementById('nextBtn').classList.add('hidden');
             document.getElementById('prevBtn').style.display = 'none';
             return;
@@ -144,14 +135,11 @@
         const categoryClass = q.isAi ? 'category-ai' : '';
         const categoryLabel = q.isAi ? '🤖 ИИ-уточнение' : q.category;
 
-        // Проверяем, есть ли сохранённый ответ
-        const savedAnswer = savedAnswers[q.id] || '';
-
         container.innerHTML =
             '<div class="question">' +
                 '<span class="category ' + categoryClass + '">' + categoryLabel + '</span>' +
                 '<h3>' + (index + 1) + '. ' + q.questionText + '</h3>' +
-                '<textarea name="q' + q.id + '" placeholder="Ваш ответ...">' + savedAnswer + '</textarea>' +
+                '<textarea name="q' + q.id + '" placeholder="Ваш ответ..."></textarea>' +
             '</div>';
 
         const progress = ((index + 1) / allQuestions.length) * 100;
@@ -162,7 +150,8 @@
         const isLastDoctorQuestion = index === doctorQuestions.length - 1;
         const shouldGenerateAi = allowAiQuestions === true && !aiQuestionsGenerated;
 
-        console.log('isLastDoctorQuestion:', isLastDoctorQuestion, 'shouldGenerateAi:', shouldGenerateAi);
+        console.log('isLastDoctorQuestion:', isLastDoctorQuestion);
+        console.log('shouldGenerateAi:', shouldGenerateAi);
 
         if (isLastDoctorQuestion && shouldGenerateAi) {
             document.getElementById('nextBtn').textContent = 'Далее → 🤖';
@@ -181,33 +170,16 @@
     function saveCurrentAnswer() {
         const q = allQuestions[currentQuestion];
         const input = document.querySelector('textarea[name="q' + q.id + '"]');
-
-        if (input) {
-            const answerText = input.value.trim();
-            console.log('saveCurrentAnswer: question=' + q.id + ', answer length=' + answerText.length);
-
-            if (answerText) {
-                savedAnswers[q.id] = answerText;
-
-                // Сохраняем на сервере
-                fetch('/patient/survey/' + surveyId + '/answer', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: 'questionId=-1&answerText=' + encodeURIComponent(answerText) + '&questionText=' + encodeURIComponent(q.questionText)
-                })
-                .then(r => r.json())
-                .then(data => {
-                    console.log('Answer saved:', data);
-                })
-                .catch(err => {
-                    console.error('Error saving answer:', err);
-                });
-            }
+        if (input && input.value) {
+            fetch('/patient/survey/' + surveyId + '/answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'questionId=-1&answerText=' + encodeURIComponent(input.value) + '&questionText=' + encodeURIComponent(q.questionText)
+            });
         }
     }
 
     function nextQuestion() {
-        console.log('nextQuestion: current=' + currentQuestion);
         saveCurrentAnswer();
 
         const isLastDoctorQuestion = currentQuestion === doctorQuestions.length - 1;
@@ -225,7 +197,6 @@
     }
 
     function generateAiQuestionsAndContinue() {
-        console.log('generateAiQuestionsAndContinue: Starting AI generation...');
         document.getElementById('loadingOverlay').classList.add('show');
 
         fetch('/patient/survey/' + surveyId + '/generate-ai-questions', {
@@ -233,16 +204,10 @@
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: ''
         })
-        .then(function(response) {
-            console.log('AI response status:', response.status);
-            return response.json();
-        })
+        .then(function(response) { return response.json(); })
         .then(function(data) {
-            console.log('AI response data:', data);
             if (data.success) {
                 const questionsArray = data.questions.split('\n\n');
-                console.log('Parsed AI questions:', questionsArray.length);
-
                 const newAiQuestions = [];
                 for (let i = 0; i < questionsArray.length; i++) {
                     newAiQuestions.push({
@@ -257,8 +222,6 @@
                 allQuestions = allQuestions.concat(newAiQuestions);
                 aiQuestionsGenerated = true;
 
-                console.log('New total questions:', allQuestions.length);
-
                 currentQuestion++;
                 renderQuestion(currentQuestion);
             } else {
@@ -268,8 +231,8 @@
             }
         })
         .catch(function(err) {
-            console.error('AI generation error:', err);
-            alert('⚠️ Ошибка сети при генерации ИИ-вопросов');
+            alert('⚠️ Ошибка сети');
+            console.error(err);
             currentQuestion++;
             renderQuestion(currentQuestion);
         })
@@ -279,7 +242,6 @@
     }
 
     function prevQuestion() {
-        console.log('prevQuestion: current=' + currentQuestion);
         saveCurrentAnswer();
         if (currentQuestion > 0) {
             currentQuestion--;
@@ -288,44 +250,17 @@
     }
 
     function completeSurvey() {
-        console.log('completeSurvey: Saving final answer...');
         saveCurrentAnswer();
-
-        // Небольшая задержка чтобы все ответы успели сохраниться
-        setTimeout(function() {
-            if (confirm('Завершить опрос? После этого вы не сможете изменить ответы.')) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/patient/survey/' + surveyId + '/complete';
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }, 500);
+        if (confirm('Завершить опрос?')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/patient/survey/' + surveyId + '/complete';
+            document.body.appendChild(form);
+            form.submit();
+        }
     }
 
-    // Загрузка сохранённых ответов с сервера при инициализации
-    function loadSavedAnswers() {
-        console.log('loadSavedAnswers: Loading from server...');
-        fetch('/patient/survey/' + surveyId + '/answers')
-            .then(r => r.json())
-            .then(data => {
-                console.log('Loaded saved answers:', data);
-                if (data && data.answers) {
-                    for (let i = 0; i < data.answers.length; i++) {
-                        const ans = data.answers[i];
-                        savedAnswers[ans.questionId] = ans.answerText;
-                    }
-                }
-                renderQuestion(0);
-            })
-            .catch(err => {
-                console.error('Error loading saved answers:', err);
-                renderQuestion(0);
-            });
-    }
-
-    // Старт
-    loadSavedAnswers();
+    renderQuestion(0);
 </script>
 </body>
 </html>

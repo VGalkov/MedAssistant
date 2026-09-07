@@ -11,7 +11,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +35,6 @@ public class LmStudioService {
         this.promptService = promptService;
     }
 
-    /**
-     * Структурирование текста опроса
-     */
     public String processSurveyText(String patientAnswers) {
         logger.info("Calling LM Studio API for processSurveyText...");
 
@@ -59,20 +55,14 @@ public class LmStudioService {
             requestBody.put("max_tokens", 1000);
             requestBody.put("temperature", 0.3);
 
-            logger.debug("Request body: {}", requestBody);
-
             ResponseEntity<String> response = restTemplate.postForEntity(
                     lmStudioBaseUrl + "/v1/chat/completions",
                     requestBody,
                     String.class
             );
 
-            logger.debug("Response status: {}", response.getStatusCode());
-            logger.debug("Response body: {}", response.getBody());
-
             JsonNode root = objectMapper.readTree(response.getBody());
 
-            // ✅ Проверка на ошибку
             if (root.has("error")) {
                 String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
                 logger.error("LM Studio error: {}", errorMsg);
@@ -80,8 +70,7 @@ public class LmStudioService {
             }
 
             String content = root.path("choices").get(0).path("message").path("content").asText();
-
-            logger.info("✓ processSurveyText completed, response length: {}", content.length());
+            logger.info("✓ processSurveyText completed, length: {}", content.length());
             return content;
 
         } catch (Exception e) {
@@ -90,11 +79,11 @@ public class LmStudioService {
         }
     }
 
-    /**
-     * Генерация рекомендаций для врача
-     */
     public String generateRecommendations(String originalText, String processedText, String patientHistory) {
-        logger.info("Calling LM Studio API for generateRecommendations...");
+        logger.info("=== generateRecommendations ===");
+        logger.info("originalText length: {}", originalText.length());
+        logger.info("processedText length: {}", processedText != null ? processedText.length() : 0);
+        logger.info("patientHistory: {}", patientHistory != null ? "found" : "not found");
 
         String promptTemplate = promptService.getPrompt("recommendations");
         if (promptTemplate == null) {
@@ -104,6 +93,8 @@ public class LmStudioService {
 
         String prompt = String.format(promptTemplate, originalText, processedText,
                 patientHistory != null ? patientHistory : "История пуста");
+
+        logger.info("Prompt sent to LM Studio ({} chars)", prompt.length());
 
         try {
             Map<String, Object> requestBody = new HashMap<>();
@@ -122,7 +113,6 @@ public class LmStudioService {
 
             JsonNode root = objectMapper.readTree(response.getBody());
 
-            // ✅ Проверка на ошибку
             if (root.has("error")) {
                 String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
                 logger.error("LM Studio error: {}", errorMsg);
@@ -131,7 +121,10 @@ public class LmStudioService {
 
             String content = root.path("choices").get(0).path("message").path("content").asText();
 
-            logger.info("✓ generateRecommendations completed");
+            logger.info("=== Recommendations received ===");
+            logger.info("{}", content);
+            logger.info("================================");
+
             return content;
 
         } catch (Exception e) {
@@ -140,11 +133,8 @@ public class LmStudioService {
         }
     }
 
-    /**
-     * Обнаружение подозрений на недостоверность
-     */
     public String detectSuspicionFlags(String patientAnswers, String patientHistory) {
-        logger.info("Calling LM Studio API for detectSuspicionFlags...");
+        logger.info("=== detectSuspicionFlags ===");
 
         String promptTemplate = promptService.getPrompt("suspicion");
         if (promptTemplate == null) {
@@ -172,7 +162,6 @@ public class LmStudioService {
 
             JsonNode root = objectMapper.readTree(response.getBody());
 
-            // ✅ Проверка на ошибку
             if (root.has("error")) {
                 String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
                 logger.error("LM Studio error: {}", errorMsg);
@@ -181,7 +170,10 @@ public class LmStudioService {
 
             String content = root.path("choices").get(0).path("message").path("content").asText();
 
-            logger.info("✓ detectSuspicionFlags completed");
+            logger.info("=== Suspicion flags received ===");
+            logger.info("{}", content);
+            logger.info("================================");
+
             return content;
 
         } catch (Exception e) {
@@ -190,9 +182,6 @@ public class LmStudioService {
         }
     }
 
-    /**
-     * Генерация уточняющих вопросов
-     */
     public String generateAiClarifyingQuestions(String patientAnswers) {
         logger.info("Calling LM Studio API for generateAiClarifyingQuestions...");
 
@@ -221,7 +210,6 @@ public class LmStudioService {
 
             JsonNode root = objectMapper.readTree(response.getBody());
 
-            // ✅ Проверка на ошибку
             if (root.has("error")) {
                 String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
                 logger.error("LM Studio error: {}", errorMsg);
@@ -239,9 +227,6 @@ public class LmStudioService {
         }
     }
 
-    /**
-     * Анализ изображения через Vision-модель (не используется, оставлено для будущего)
-     */
     public String analyzeImageWithVision(Path imagePath, String prompt) {
         logger.warn("analyzeImageWithVision called but not implemented");
         return "[Изображение не анализируется]";

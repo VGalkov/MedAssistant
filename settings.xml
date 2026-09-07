@@ -4,26 +4,58 @@
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
                               https://maven.apache.org/xsd/settings-1.0.0.xsd">
 
-    <!-- Локальный репозиторий внутри проекта (без кириллицы в пути) -->
-    <localRepository>${basedir}/.m2/repository</localRepository>
+    <!-- Локальный репозиторий Maven (путь без кириллицы) -->
+    <localRepository>C:\maven-repo\medassistant</localRepository>
 
-    <!-- Зеркала для обхода проблем с подключением к Maven Central -->
+    <!-- ЗЕРКАЛА для ускорения загрузки в России -->
     <mirrors>
-        <!-- Зеркало Aliyun (Китай) - быстрое и надёжное -->
+        <!-- Alibaba Cloud Mirror (Китай - быстрее для РФ) -->
         <mirror>
-            <id>aliyun</id>
+            <id>aliyun-maven</id>
             <mirrorOf>central</mirrorOf>
-            <name>Aliyun Maven Mirror</name>
+            <name>Aliyun Maven Central</name>
             <url>https://maven.aliyun.com/repository/central</url>
         </mirror>
-        
-        <!-- Резервное зеркало -->
+
+        <!-- Huawei Cloud Mirror (альтернатива) -->
         <mirror>
-            <id>repo1</id>
+            <id>huaweicloud-maven</id>
             <mirrorOf>central</mirrorOf>
-            <name>Repo1 Maven Mirror</name>
-            <url>https://repo1.maven.org/maven2/</url>
+            <name>Huawei Cloud Maven Central</name>
+            <url>https://mirrors.huaweicloud.com/maven/</url>
         </mirror>
     </mirrors>
+
+    <!-- Настройки профилей -->
+    <profiles>
+        <profile>
+            <id>medassistant</id>
+            <properties>
+                <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+                <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+            </properties>
+
+            <!-- Увеличенные таймауты -->
+            <repositories>
+                <repository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases>
+                        <enabled>true</enabled>
+                        <updatePolicy>always</updatePolicy>
+                        <checksumPolicy>warn</checksumPolicy>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+        </profile>
+    </profiles>
+
+    <!-- Активный профиль по умолчанию -->
+    <activeProfiles>
+        <activeProfile>medassistant</activeProfile>
+    </activeProfiles>
 
 </settings>

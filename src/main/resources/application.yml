@@ -66,7 +66,7 @@ lmstudio:
   # Адрес LM Studio (можно менять)
   # Если LM Studio на том же сервере: http://localhost:1234
   # Если на другом: http://<IP-адрес>:1234
-  base-url: http://localhost:1234
+  base-url: http://10.0.3.10:1234
   # Название модели
   model: local-model
 

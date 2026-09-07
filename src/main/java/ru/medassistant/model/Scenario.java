@@ -46,6 +46,9 @@ public class Scenario {
     @Column
     private Boolean allowAiQuestions = false;
 
+    @Column
+    private Boolean allowFileUpload = false;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

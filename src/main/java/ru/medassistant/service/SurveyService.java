@@ -7,8 +7,13 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.medassistant.model.*;
 import ru.medassistant.repository.*;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -43,9 +48,6 @@ public class SurveyService {
         return surveyRepository.save(survey);
     }
 
-    /**
-     * Добавляет ответ на вопрос
-     */
     public void addAnswer(Long surveyId, Long questionId, String answerText, String questionText) {
         logger.info("addAnswer: surveyId={}, questionId={}, questionText='{}', answerLength={}",
                 surveyId, questionId, questionText, answerText.length());
@@ -59,14 +61,12 @@ public class SurveyService {
         answer.setAnsweredAt(LocalDateTime.now());
 
         if (questionId != null && questionId > 0) {
-            // Стандартный вопрос — сохраняем ID, текст загрузится из БД
             ScenarioQuestion question = new ScenarioQuestion();
             question.setId(questionId);
             answer.setQuestion(question);
             answer.setQuestionText(null);
             logger.info("Answer linked to question ID: {}", questionId);
         } else {
-            // Вопрос доктора/ИИ — сохраняем текст напрямую
             answer.setQuestion(null);
             answer.setQuestionText(questionText != null ? questionText : "Вопрос");
             logger.info("Answer saved with questionText: '{}'", answer.getQuestionText());
@@ -85,7 +85,6 @@ public class SurveyService {
     public Survey completeSurvey(Long surveyId) {
         logger.info("=== completeSurvey: {} ===", surveyId);
 
-        // Загружаем опрос с ответами
         Survey survey = surveyRepository.findByIdWithAnswers(surveyId)
                 .orElseThrow(() -> new RuntimeException("Опрос не найден: " + surveyId));
 
@@ -97,26 +96,17 @@ public class SurveyService {
         for (SurveyAnswer answer : survey.getAnswers()) {
             answerNum++;
 
-            // Читаем текст вопроса: сначала из поля questionText, потом из question
             String questionText = answer.getQuestionText();
-
             if (questionText == null && answer.getQuestion() != null) {
-                // Пробуем загрузить вопрос из БД
                 try {
                     questionText = answer.getQuestion().getQuestionText();
-                    logger.info("Answer {}: Loaded questionText from question entity: '{}'",
-                            answerNum, questionText);
+                    logger.info("Answer {}: Loaded questionText from question entity: '{}'", answerNum, questionText);
                 } catch (Exception e) {
                     logger.warn("Answer {}: Failed to load questionText from question entity", answerNum, e);
                 }
             }
 
             String answerText = answer.getAnswerText();
-
-            logger.info("Answer {}: questionText='{}', answerLength={}",
-                    answerNum,
-                    questionText != null ? questionText : "[NULL]",
-                    answerText != null ? answerText.length() : 0);
 
             if (questionText == null || questionText.trim().isEmpty()) {
                 questionText = "[Вопрос #" + answerNum + "]";
@@ -125,10 +115,42 @@ public class SurveyService {
                 answerText = "[Нет ответа]";
             }
 
-            originalText.append(questionText)
-                    .append(": ")
-                    .append(answerText)
-                    .append("\n");
+            originalText.append(questionText).append(": ").append(answerText).append("\n");
+        }
+
+        // ✅ Читаем содержимое файлов и добавляем к тексту
+        StringBuilder filesContent = new StringBuilder();
+        Path uploadDir = Paths.get("uploads/survey-" + surveyId);
+
+        if (Files.exists(uploadDir)) {
+            try {
+                List<Path> imageFiles = Files.list(uploadDir)
+                        .filter(p -> p.toString().toLowerCase().matches(".*\\.(jpg|jpeg|png|gif)$"))
+                        .collect(Collectors.toList());
+
+                if (!imageFiles.isEmpty()) {
+                    originalText.append("\n📎 ПРИКРЕПЛЁННЫЕ ФАЙЛЫ: ").append(imageFiles.size()).append(" шт.\n");
+
+                    for (Path file : imageFiles) {
+                        originalText.append("- ").append(file.getFileName()).append("\n");
+
+                        // ✅ Читаем содержимое файла (для текстовых файлов)
+                        String fileContent = readFileContent(file);
+                        if (fileContent != null && !fileContent.trim().isEmpty()) {
+                            filesContent.append("Файл: ").append(file.getFileName()).append("\n");
+                            filesContent.append("Содержимое: ").append(fileContent).append("\n\n");
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                logger.warn("Failed to list uploaded files", e);
+            }
+        }
+
+        // ✅ Добавляем содержимое файлов к основному тексту для анализа
+        if (filesContent.length() > 0) {
+            originalText.append("\n=== СОДЕРЖИМОЕ ФАЙЛОВ ===\n");
+            originalText.append(filesContent);
         }
 
         String originalTextStr = originalText.toString();
@@ -143,37 +165,53 @@ public class SurveyService {
         survey.setStatus("COMPLETED");
         survey.setCompletedAt(LocalDateTime.now());
 
-        // Шаг 1: Структурирование
         logger.info("Calling processSurveyText...");
         String processedText = lmStudioService.processSurveyText(originalTextStr);
         logger.info("Processed text: {}", processedText);
         survey.setProcessedText(processedText);
 
-        // Шаг 2: История пациента
         String patientHistory = getPatientHistory(survey.getPatient().getId(), surveyId);
         logger.info("Patient history: {}", patientHistory != null ? "found" : "not found");
 
-        // Шаг 3: Рекомендации
         logger.info("Calling generateRecommendations...");
-        String recommendations = lmStudioService.generateRecommendations(
-                originalTextStr,
-                processedText,
-                patientHistory
-        );
+        String recommendations = lmStudioService.generateRecommendations(originalTextStr, processedText, patientHistory);
         logger.info("Recommendations: {}", recommendations);
         survey.setAiRecommendations(recommendations);
 
-        // Шаг 4: Подозрения
         logger.info("Calling detectSuspicionFlags...");
-        String suspicionFlags = lmStudioService.detectSuspicionFlags(
-                originalTextStr,
-                patientHistory
-        );
+        String suspicionFlags = lmStudioService.detectSuspicionFlags(originalTextStr, patientHistory);
         logger.info("Suspicion flags: {}", suspicionFlags);
         survey.setAiSuspicionFlags(suspicionFlags);
 
         logger.info("=== Survey completed successfully ===");
         return surveyRepository.save(survey);
+    }
+
+    /**
+     * Читает содержимое файла (только текстовые файлы, изображения игнорируются)
+     */
+    private String readFileContent(Path filePath) {
+        try {
+            String fileName = filePath.getFileName().toString().toLowerCase();
+
+            // ✅ Для текстовых файлов - читаем текст
+            if (fileName.endsWith(".txt") || fileName.endsWith(".md") || fileName.endsWith(".csv")) {
+                return Files.readString(filePath);
+            }
+
+            // ✅ Для изображений - НЕ отправляем в ИИ
+            if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") ||
+                    fileName.endsWith(".png") || fileName.endsWith(".gif")) {
+                long fileSize = Files.size(filePath);
+                return "[Изображение: " + fileName + ", размер: " + (fileSize / 1024) + " KB]";
+            }
+
+            return "[Файл: " + fileName + "]";
+
+        } catch (IOException e) {
+            logger.warn("Failed to read file content: {}", filePath, e);
+            return null;
+        }
     }
 
     private String getPatientHistory(Long patientId, Long excludeSurveyId) {

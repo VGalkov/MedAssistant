@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,132 +21,229 @@ public class LmStudioService {
 
     private static final Logger logger = LoggerFactory.getLogger(LmStudioService.class);
 
-    private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
-    private final PromptService promptService;
-
     @Value("${lmstudio.base-url:http://localhost:1234}")
-    private String baseUrl;
+    private String lmStudioBaseUrl;
 
     @Value("${lmstudio.model:local-model}")
     private String model;
 
-    public LmStudioService(ObjectMapper objectMapper, PromptService promptService) {
-        this.restTemplate = new RestTemplate();
-        this.objectMapper = objectMapper;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final PromptService promptService;
+
+    public LmStudioService(PromptService promptService) {
         this.promptService = promptService;
     }
 
-    public String processSurveyText(String originalText) {
-        logger.info("processSurveyText called with {} chars", originalText.length());
+    /**
+     * Структурирование текста опроса
+     */
+    public String processSurveyText(String patientAnswers) {
+        logger.info("Calling LM Studio API for processSurveyText...");
+
         String promptTemplate = promptService.getPrompt("process-survey");
-        String prompt = String.format(promptTemplate, originalText);
-        String result = callLlm(prompt, 0.3);
-        logger.info("processSurveyText result: {}", result);
-        return result;
-    }
-
-    public String generateRecommendations(String originalText, String processedText, String patientHistory) {
-        logger.info("generateRecommendations called");
-        String promptTemplate = promptService.getPrompt("recommendations");
-        String prompt = String.format(promptTemplate,
-                originalText,
-                processedText,
-                patientHistory != null ? patientHistory : "Нет истории"
-        );
-        String result = callLlm(prompt, 0.5);
-        logger.info("generateRecommendations result: {}", result);
-        return result;
-    }
-
-    public String detectSuspicionFlags(String originalText, String patientHistory) {
-        logger.info("detectSuspicionFlags called");
-        String promptTemplate = promptService.getPrompt("suspicion");
-        String prompt = String.format(promptTemplate,
-                originalText,
-                patientHistory != null ? patientHistory : "Нет истории"
-        );
-        String result = callLlm(prompt, 0.2);
-        logger.info("detectSuspicionFlags result: {}", result);
-        return result;
-    }
-
-    public String generateAiClarifyingQuestions(String patientAnswers) {
-        logger.info("generateAiClarifyingQuestions called with {} chars", patientAnswers.length());
-        String promptTemplate = promptService.getPrompt("ai-questions");
-        String prompt = String.format(promptTemplate, patientAnswers);
-        String response = callLlm(prompt, 0.4);
-        logger.info("generateAiClarifyingQuestions raw response: {}", response);
-
-        // Парсим ответ: ожидаем 3 вопроса
-        String[] lines = response.split("\n");
-        StringBuilder result = new StringBuilder();
-        int count = 0;
-
-        for (String line : lines) {
-            line = line.trim();
-            line = line.replaceAll("^[\\d]+[.)]\\s*", "");
-            line = line.replaceAll("^[-*•]\\s*", "");
-
-            if (!line.isEmpty() && line.contains("?")) {
-                if (line.length() > 0) {
-                    line = Character.toUpperCase(line.charAt(0)) + line.substring(1);
-                }
-                if (!line.endsWith("?")) {
-                    line = line.replaceAll("[.!,;:]*$", "") + "?";
-                }
-
-                if (count > 0) {
-                    result.append("\n\n");
-                }
-                result.append(line);
-                count++;
-
-                if (count >= 3) break;
-            }
+        if (promptTemplate == null) {
+            logger.error("Prompt 'process-survey' not found!");
+            return "Ошибка: промпт не найден";
         }
 
-        logger.info("generateAiClarifyingQuestions parsed {} questions", count);
-        return result.toString();
-    }
-
-    private String callLlm(String prompt, double temperature) {
-        logger.info("callLlm: URL={}, model={}, temperature={}", baseUrl, model, temperature);
-        logger.info("callLlm prompt: {}", prompt);
+        String prompt = String.format(promptTemplate, patientAnswers);
 
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model);
             requestBody.put("messages", List.of(
-                    Map.of("role", "system", "content", "Вы — медицинский ИИ-ассистент. Отвечайте точно, структурированно, на русском языке."),
                     Map.of("role", "user", "content", prompt)
             ));
-            requestBody.put("temperature", temperature);
-            requestBody.put("max_tokens", 2000);
-            requestBody.put("stream", false);
+            requestBody.put("max_tokens", 1000);
+            requestBody.put("temperature", 0.3);
 
-            String url = baseUrl + "/v1/chat/completions";
-            logger.info("callLlm: Sending request to {}", url);
+            logger.debug("Request body: {}", requestBody);
 
-            String response = restTemplate.postForObject(url, requestBody, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    lmStudioBaseUrl + "/v1/chat/completions",
+                    requestBody,
+                    String.class
+            );
 
-            logger.info("callLlm: Raw response: {}", response);
+            logger.debug("Response status: {}", response.getStatusCode());
+            logger.debug("Response body: {}", response.getBody());
 
-            if (response == null) {
-                logger.error("callLlm: Empty response from LM Studio");
-                return "[Ошибка: пустой ответ от LM Studio]";
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            // ✅ Проверка на ошибку
+            if (root.has("error")) {
+                String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
+                logger.error("LM Studio error: {}", errorMsg);
+                return "Ошибка ИИ: " + errorMsg;
             }
 
-            JsonNode jsonNode = objectMapper.readTree(response);
-            String content = jsonNode.path("choices").get(0).path("message").path("content").asText();
+            String content = root.path("choices").get(0).path("message").path("content").asText();
 
-            logger.info("callLlm: Extracted content: {}", content);
-
+            logger.info("✓ processSurveyText completed, response length: {}", content.length());
             return content;
 
         } catch (Exception e) {
-            logger.error("callLlm: Error", e);
-            return "[Ошибка связи с LM Studio: " + e.getMessage() + "]";
+            logger.error("❌ ERROR calling LM Studio API: {}", e.getMessage(), e);
+            return "Ошибка анализа: " + e.getMessage();
         }
+    }
+
+    /**
+     * Генерация рекомендаций для врача
+     */
+    public String generateRecommendations(String originalText, String processedText, String patientHistory) {
+        logger.info("Calling LM Studio API for generateRecommendations...");
+
+        String promptTemplate = promptService.getPrompt("recommendations");
+        if (promptTemplate == null) {
+            logger.error("Prompt 'recommendations' not found!");
+            return "Ошибка: промпт не найден";
+        }
+
+        String prompt = String.format(promptTemplate, originalText, processedText,
+                patientHistory != null ? patientHistory : "История пуста");
+
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model);
+            requestBody.put("messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+            ));
+            requestBody.put("max_tokens", 500);
+            requestBody.put("temperature", 0.5);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    lmStudioBaseUrl + "/v1/chat/completions",
+                    requestBody,
+                    String.class
+            );
+
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            // ✅ Проверка на ошибку
+            if (root.has("error")) {
+                String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
+                logger.error("LM Studio error: {}", errorMsg);
+                return "Ошибка ИИ: " + errorMsg;
+            }
+
+            String content = root.path("choices").get(0).path("message").path("content").asText();
+
+            logger.info("✓ generateRecommendations completed");
+            return content;
+
+        } catch (Exception e) {
+            logger.error("❌ ERROR calling LM Studio API: {}", e.getMessage(), e);
+            return "Ошибка генерации рекомендаций: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Обнаружение подозрений на недостоверность
+     */
+    public String detectSuspicionFlags(String patientAnswers, String patientHistory) {
+        logger.info("Calling LM Studio API for detectSuspicionFlags...");
+
+        String promptTemplate = promptService.getPrompt("suspicion");
+        if (promptTemplate == null) {
+            logger.error("Prompt 'suspicion' not found!");
+            return "Ошибка: промпт не найден";
+        }
+
+        String prompt = String.format(promptTemplate, patientAnswers,
+                patientHistory != null ? patientHistory : "История пуста");
+
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model);
+            requestBody.put("messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+            ));
+            requestBody.put("max_tokens", 300);
+            requestBody.put("temperature", 0.3);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    lmStudioBaseUrl + "/v1/chat/completions",
+                    requestBody,
+                    String.class
+            );
+
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            // ✅ Проверка на ошибку
+            if (root.has("error")) {
+                String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
+                logger.error("LM Studio error: {}", errorMsg);
+                return "Ошибка ИИ: " + errorMsg;
+            }
+
+            String content = root.path("choices").get(0).path("message").path("content").asText();
+
+            logger.info("✓ detectSuspicionFlags completed");
+            return content;
+
+        } catch (Exception e) {
+            logger.error("❌ ERROR calling LM Studio API: {}", e.getMessage(), e);
+            return "Ошибка анализа подозрений: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Генерация уточняющих вопросов
+     */
+    public String generateAiClarifyingQuestions(String patientAnswers) {
+        logger.info("Calling LM Studio API for generateAiClarifyingQuestions...");
+
+        String promptTemplate = promptService.getPrompt("ai-questions");
+        if (promptTemplate == null) {
+            logger.error("Prompt 'ai-questions' not found!");
+            return "Ошибка: промпт не найден";
+        }
+
+        String prompt = String.format(promptTemplate, patientAnswers);
+
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model);
+            requestBody.put("messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+            ));
+            requestBody.put("max_tokens", 300);
+            requestBody.put("temperature", 0.7);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    lmStudioBaseUrl + "/v1/chat/completions",
+                    requestBody,
+                    String.class
+            );
+
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            // ✅ Проверка на ошибку
+            if (root.has("error")) {
+                String errorMsg = root.path("error").path("message").asText("Неизвестная ошибка");
+                logger.error("LM Studio error: {}", errorMsg);
+                return "Ошибка ИИ: " + errorMsg;
+            }
+
+            String content = root.path("choices").get(0).path("message").path("content").asText();
+
+            logger.info("✓ generateAiClarifyingQuestions completed");
+            return content;
+
+        } catch (Exception e) {
+            logger.error("❌ ERROR calling LM Studio API: {}", e.getMessage(), e);
+            return "Ошибка генерации вопросов: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Анализ изображения через Vision-модель (не используется, оставлено для будущего)
+     */
+    public String analyzeImageWithVision(Path imagePath, String prompt) {
+        logger.warn("analyzeImageWithVision called but not implemented");
+        return "[Изображение не анализируется]";
     }
 }

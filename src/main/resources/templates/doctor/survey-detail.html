@@ -38,6 +38,80 @@
         .append-option { margin-top: 10px; display: flex; gap: 10px; align-items: center; }
         .append-option label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
         .append-option span { font-size: 13px; color: #666; }
+
+        /* Файлы */
+        .file-list { display: grid; gap: 15px; }
+
+        /* Изображения */
+        .file-item-image {
+            display: block;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            text-decoration: none;
+            color: #333;
+            text-align: center;
+        }
+        .file-item-image:hover { background: #e0e0e0; }
+        .file-item-image img {
+            max-width: 100%;
+            height: auto;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .file-item-image .file-name {
+            display: block;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        /* Текстовые файлы */
+        .file-item-text {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .file-item-text .file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+        .file-item-text .file-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .file-item-text .file-size {
+            font-size: 12px;
+            color: #666;
+        }
+        .file-item-text .file-content {
+            padding: 15px;
+            background: #fff;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        .file-item-text .toggle-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .file-item-text .toggle-btn:hover { background: #1557b0; }
+
         @media (max-width: 900px) {
             .container { grid-template-columns: 1fr; }
         }
@@ -50,7 +124,6 @@
 </div>
 
 <div class="container">
-    <!-- Левая колонка: оригинал и обработанный текст -->
     <div>
         <div class="panel" style="margin-bottom: 20px;">
             <div class="panel-header">👤 Пациент</div>
@@ -60,6 +133,49 @@
                     <p><strong>Телефон:</strong> <span th:text="${patient.phone}">+7...</span></p>
                     <p th:if="${patient.email != null and patient.email != ''}"><strong>Email:</strong> <span th:text="${patient.email}"></span></p>
                     <p><strong>Дата опроса:</strong> <span th:text="${#temporals.format(survey.completedAt, 'dd.MM.yyyy HH:mm')}"></span></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">📎 Прикреплённые файлы</div>
+            <div class="panel-content">
+                <div th:if="${uploadedFiles != null and !uploadedFiles.empty}" class="file-list">
+
+                    <!-- ✅ Изображения -->
+                    <div th:each="file : ${uploadedFiles}" th:if="${file.type == 'image'}">
+                        <a th:href="@{/doctor/survey/{id}/files(filename=${file.filename}, id=${survey.id})}"
+                           target="_blank"
+                           class="file-item-image">
+                            <img th:src="@{/doctor/survey/{id}/files(filename=${file.filename}, id=${survey.id})}"
+                                 alt="Preview"
+                                 th:title="${file.filename}">
+                            <span class="file-name">📄 <span th:text="${file.filename}">filename.jpg</span> (<span th:text="${file.size / 1024}">0</span> KB)</span>
+                        </a>
+                    </div>
+
+                    <!-- ✅ Текстовые файлы -->
+                    <div th:each="file, iterStat : ${uploadedFiles}" th:if="${file.type == 'text'}" class="file-item-text">
+                        <div class="file-header">
+                            <div>
+                                <span class="file-name">📄 <span th:text="${file.filename}">file.txt</span></span>
+                                <span class="file-size">(<span th:text="${file.size / 1024}">0</span> KB)</span>
+                            </div>
+                            <button type="button" class="toggle-btn"
+                                    th:onclick="'toggleFileContent(\'file-content-' + ${iterStat.index} + '\')'">
+                                Показать содержимое
+                            </button>
+                        </div>
+                        <div th:id="'file-content-' + ${iterStat.index}"
+                             class="file-content"
+                             style="display: none;"
+                             th:text="${file.content}">
+                        </div>
+                    </div>
+
+                </div>
+                <div th:unless="${uploadedFiles != null and !uploadedFiles.empty}" style="color: #999;">
+                    Файлы не прикреплены
                 </div>
             </div>
         </div>
@@ -79,7 +195,6 @@
         </div>
     </div>
 
-    <!-- Правая колонка: рекомендации и подозрения -->
     <div>
         <div class="panel" style="margin-bottom: 20px;">
             <div class="panel-header">💡 Рекомендации ИИ: что спросить</div>
@@ -108,7 +223,7 @@
             <div class="panel-header">✏️ Комментарий врача</div>
             <div class="panel-content">
                 <form id="commentForm">
-                    <textarea id="commentText" name="comment" placeholder="Ваш комментарий (например: 'Пациент склонен преувеличивать симптомы')..." rows="4"></textarea>
+                    <textarea id="commentText" name="comment" placeholder="Ваш комментарий..." rows="4"></textarea>
                     <div class="append-option">
                         <label>
                             <input type="checkbox" id="appendComment" checked>
@@ -139,6 +254,20 @@
         });
     }
 
+    // ✅ Показать/скрыть содержимое текстового файла
+    function toggleFileContent(contentId) {
+        const content = document.getElementById(contentId);
+        const btn = content.previousElementSibling.querySelector('.toggle-btn');
+
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            btn.textContent = 'Скрыть';
+        } else {
+            content.style.display = 'none';
+            btn.textContent = 'Показать содержимое';
+        }
+    }
+
     document.getElementById('commentForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const comment = document.getElementById('commentText').value;
@@ -157,8 +286,6 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // УБРАНО: alert('Комментарий добавлен ✓');
-                // Просто очищаем поле и перезагружаем
                 document.getElementById('commentText').value = '';
                 location.reload();
             } else {

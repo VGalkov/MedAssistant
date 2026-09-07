@@ -32,7 +32,7 @@
         }
         .form-group textarea:focus { outline: none; border-color: #1a73e8; }
         .form-group small { display: block; margin-top: 8px; color: #666; font-size: 13px; }
-        .checkbox-group { display: flex; align-items: flex-start; gap: 10px; padding: 15px; background: #e8f0fe; border-radius: 6px; margin-bottom: 20px; }
+        .checkbox-group { display: flex; align-items: flex-start; gap: 10px; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
         .checkbox-group input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; }
         .checkbox-group label { font-weight: 500; color: #1967d2; cursor: pointer; }
         .checkbox-group small { display: block; margin-top: 5px; color: #666; font-size: 13px; }
@@ -48,8 +48,6 @@
         .scenario-info p { margin: 5px 0; color: #555; }
         .success-message { background: #d4edda; color: #155724; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
         .error-message { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
-
-        /* AI notice box */
         .ai-notice {
             margin-top: 15px;
             padding: 10px;
@@ -58,9 +56,7 @@
             border-radius: 4px;
             transition: opacity 0.3s, max-height 0.3s;
         }
-        .ai-notice.hidden {
-            display: none;
-        }
+        .ai-notice.hidden { display: none; }
         .ai-notice strong { color: #9c27b0; }
         .ai-notice p { color: #666; font-size: 13px; margin-top: 5px; }
     </style>
@@ -77,13 +73,8 @@
         <p th:if="${scenario.specialty != null}"><strong>Специальность:</strong> <span th:text="${scenario.specialty}"></span></p>
     </div>
 
-    <!-- Сообщение об успехе -->
-    <div th:if="${success}" class="success-message">
-        ✅ Изменения сохранены
-    </div>
-    <div th:if="${error}" class="error-message">
-        ❌ <span th:text="${error}"></span>
-    </div>
+    <div th:if="${success}" class="success-message">✅ Изменения сохранены</div>
+    <div th:if="${error}" class="error-message">❌ <span th:text="${error}"></span></div>
 
     <form id="editForm" method="POST" th:action="@{/doctor/scenario/{id}/edit-questions(id=${scenario.id})}">
         <div class="panel">
@@ -91,9 +82,8 @@
             <div class="panel-content">
                 <div class="form-group">
                     <label for="doctorQuestionsText">Текст вопросов:</label>
-                    <textarea id="doctorQuestionsText"
-                              name="doctorQuestionsText"
-                              placeholder="Что вас беспокоит? Опишите основные симптомы.&#10;&#10;Как давно начались симптомы?&#10;&#10;Принимаете ли вы какие-либо препараты постоянно?&#10;&#10;Есть ли у вас аллергии?&#10;&#10;Есть ли у вас хронические заболевания?"
+                    <textarea id="doctorQuestionsText" name="doctorQuestionsText"
+                              placeholder="Что вас беспокоит? Опишите основные симптомы.&#10;&#10;Как давно начались симптомы?&#10;&#10;Принимаете ли вы какие-либо препараты постоянно?"
                               th:text="${scenario.doctorQuestionsText}"></textarea>
                     <small>
                         ✅ Каждый вопрос должен:<br>
@@ -106,12 +96,19 @@
 
                 <div class="checkbox-group">
                     <input type="checkbox" id="allowAiQuestions" name="allowAiQuestions"
-                           th:checked="${scenario.allowAiQuestions}" onchange="toggleAiNotice()">
+                           th:checked="${scenario.allowAiQuestions}">
                     <div>
                         <label for="allowAiQuestions">🤖 Разрешить ИИ задать 3 уточняющих вопроса</label>
-                        <small>
-                            Если включено, после ответов на вопросы доктора ИИ сгенерирует 3 дополнительных уточняющих вопроса
-                        </small>
+                        <small>Если включено, после ответов на вопросы доктора ИИ сгенерирует 3 дополнительных уточняющих вопроса</small>
+                    </div>
+                </div>
+
+                <div class="checkbox-group" style="background: #f3e5f5;">
+                    <input type="checkbox" id="allowFileUpload" name="allowFileUpload"
+                           th:checked="${scenario.allowFileUpload}">
+                    <div>
+                        <label for="allowFileUpload">📎 Разрешить загрузку файлов (анализы, снимки)</label>
+                        <small>Если включено, пациент сможет прикрепить файлы с анализами (изображения: JPG, PNG). Файлы будут проанализированы ИИ вместе с текстом ответов.</small>
                     </div>
                 </div>
 
@@ -135,12 +132,9 @@
                         style="margin: 5px 0; color: #333;">Вопрос</li>
                 </ol>
 
-                <!-- ✅ AI notice - показывается только если галочка установлена -->
                 <div id="aiNotice" class="ai-notice hidden" th:classappend="${scenario.allowAiQuestions} ? '' : 'hidden'">
                     <strong style="color: #9c27b0;">🤖 + 3 ИИ-вопроса</strong>
-                    <p style="color: #666; font-size: 13px; margin-top: 5px;">
-                        Будут сгенерированы автоматически после ответов на вопросы доктора
-                    </p>
+                    <p style="color: #666; font-size: 13px; margin-top: 5px;">Будут сгенерированы автоматически после ответов на вопросы доктора</p>
                 </div>
             </div>
         </div>
@@ -148,11 +142,9 @@
 </div>
 
 <script>
-    // Показ/скрытие блока ИИ-вопросов
     function toggleAiNotice() {
         const checkbox = document.getElementById('allowAiQuestions');
         const aiNotice = document.getElementById('aiNotice');
-
         if (checkbox.checked) {
             aiNotice.classList.remove('hidden');
         } else {
@@ -160,7 +152,6 @@
         }
     }
 
-    // Вызываем при загрузке страницы чтобы установить правильное состояние
     document.addEventListener('DOMContentLoaded', function() {
         toggleAiNotice();
     });

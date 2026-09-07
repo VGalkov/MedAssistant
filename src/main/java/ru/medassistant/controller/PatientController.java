@@ -5,13 +5,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import ru.medassistant.model.*;
 import ru.medassistant.repository.*;
 import ru.medassistant.service.LmStudioService;
 import ru.medassistant.service.SurveyService;
-import ru.medassistant.model.SurveyAnswer;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -90,11 +95,10 @@ public class PatientController {
             model.addAttribute("survey", survey);
             model.addAttribute("scenario", scenario);
             model.addAttribute("allowAiQuestions", Boolean.TRUE.equals(scenario.getAllowAiQuestions()));
+            model.addAttribute("allowFileUpload", Boolean.TRUE.equals(scenario.getAllowFileUpload()));
 
             List<String> doctorQuestions = List.of();
             String doctorQuestionsText = scenario.getDoctorQuestionsText();
-
-            logger.info("Raw doctorQuestionsText from DB: [{}]", doctorQuestionsText);
 
             if (doctorQuestionsText != null && !doctorQuestionsText.trim().isEmpty()) {
                 doctorQuestions = parseQuestions(doctorQuestionsText);
@@ -110,11 +114,12 @@ public class PatientController {
                 logger.info("Loaded {} AI questions", aiQuestions.size());
             }
 
-            logger.info("Survey page opened. Patient: {} {}, doctorQuestions={}, allowAiQuestions={}",
+            logger.info("Survey page opened. Patient: {} {}, doctorQuestions={}, allowAiQuestions={}, allowFileUpload={}",
                     survey.getPatient().getFirstName(),
                     survey.getPatient().getLastName(),
                     doctorQuestions.size(),
-                    scenario.getAllowAiQuestions());
+                    scenario.getAllowAiQuestions(),
+                    scenario.getAllowFileUpload());
 
             return "patient/survey";
 
@@ -124,9 +129,6 @@ public class PatientController {
         }
     }
 
-    /**
-     * Загрузка сохранённых ответов для опроса
-     */
     @GetMapping("/survey/{id}/answers")
     @ResponseBody
     public String getSavedAnswers(@PathVariable Long id) {
@@ -146,7 +148,6 @@ public class PatientController {
                 if (!first) json.append(",");
                 first = false;
 
-                // Сначала пробуем questionText, потом question.questionText
                 String questionId = answer.getQuestionText();
                 if (questionId == null && answer.getQuestion() != null) {
                     questionId = answer.getQuestion().getQuestionText();
@@ -176,6 +177,53 @@ public class PatientController {
         }
     }
 
+    @PostMapping("/survey/{id}/upload-files")
+    @ResponseBody
+    public String uploadFiles(@PathVariable Long id,
+                              @RequestParam("files") MultipartFile[] files) {
+        logger.info("=== Upload files for survey: {} ===", id);
+
+        try {
+            Survey survey = surveyService.getSurveyById(id)
+                    .orElseThrow(() -> new RuntimeException("Опрос не найден: " + id));
+
+            Path uploadDir = Paths.get("uploads/survey-" + id);
+            if (!Files.exists(uploadDir)) {
+                Files.createDirectories(uploadDir);
+            }
+
+            int uploaded = 0;
+            for (MultipartFile file : files) {
+                if (!file.isEmpty()) {
+                    String contentType = file.getContentType();
+                    if (contentType == null || !contentType.startsWith("image/")) {
+                        logger.warn("Invalid file type: {}", contentType);
+                        continue;
+                    }
+
+                    String originalFilename = file.getOriginalFilename();
+                    String extension = originalFilename != null && originalFilename.contains(".")
+                            ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                            : "";
+                    String filename = UUID.randomUUID().toString() + extension;
+
+                    Path filePath = uploadDir.resolve(filename);
+                    file.transferTo(filePath);
+
+                    logger.info("✅ Uploaded: {} -> {}", originalFilename, filePath);
+                    uploaded++;
+                }
+            }
+
+            logger.info("✓ Uploaded {} files", uploaded);
+            return "{\"success\": true, \"count\": " + uploaded + "}";
+
+        } catch (Exception e) {
+            logger.error("Error uploading files", e);
+            return "{\"success\": false, \"error\": \"" + e.getMessage() + "\"}";
+        }
+    }
+
     @PostMapping("/survey/{id}/generate-ai-questions")
     @ResponseBody
     public String generateAiQuestions(@PathVariable Long id) {
@@ -189,32 +237,19 @@ public class PatientController {
 
             StringBuilder patientAnswers = new StringBuilder();
             for (SurveyAnswer answer : survey.getAnswers()) {
-                // ✅ ИСПРАВЛЕНО: используем getQuestionText() вместо getQuestion().getQuestionText()
                 String questionText = answer.getQuestionText();
-
-                // Если questionText пуст, пробуем загрузить из question
                 if (questionText == null && answer.getQuestion() != null) {
                     questionText = answer.getQuestion().getQuestionText();
                 }
-
                 String answerText = answer.getAnswerText();
 
-                if (questionText == null) {
-                    questionText = "Вопрос";
-                }
-                if (answerText == null) {
-                    answerText = "[Нет ответа]";
-                }
+                if (questionText == null) questionText = "Вопрос";
+                if (answerText == null) answerText = "[Нет ответа]";
 
-                patientAnswers.append(questionText)
-                        .append(": ")
-                        .append(answerText)
-                        .append("\n");
+                patientAnswers.append(questionText).append(": ").append(answerText).append("\n");
             }
 
             logger.info("Generating AI questions based on {} characters", patientAnswers.length());
-            logger.info("Patient answers: {}", patientAnswers.toString().substring(0, Math.min(200, patientAnswers.length())));
-
             String aiQuestions = lmStudioService.generateAiClarifyingQuestions(patientAnswers.toString());
 
             survey.setAiGeneratedQuestionsText(aiQuestions);
@@ -222,8 +257,7 @@ public class PatientController {
 
             logger.info("✓ AI questions generated: {}", aiQuestions);
 
-            com.fasterxml.jackson.databind.ObjectMapper mapper =
-                    new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             return "{\"success\": true, \"questions\": " + mapper.writeValueAsString(aiQuestions) + "}";
 
         } catch (Exception e) {
@@ -265,7 +299,6 @@ public class PatientController {
             if (survey != null) {
                 logger.info("Survey has {} answers before complete", survey.getAnswers().size());
                 for (SurveyAnswer ans : survey.getAnswers()) {
-                    // ✅ ИСПРАВЛЕНО: используем getQuestionText() вместо getQuestion().getQuestionText()
                     String questionText = ans.getQuestionText();
                     if (questionText == null && ans.getQuestion() != null) {
                         questionText = ans.getQuestion().getQuestionText();
@@ -283,16 +316,15 @@ public class PatientController {
         } catch (Exception e) {
             logger.error("❌ Error completing survey: {}", id, e);
 
-            // ✅ Добавляем данные в модель для отображения ошибки
             model.addAttribute("error", "Ошибка завершения опроса: " + e.getMessage());
             model.addAttribute("surveyId", id);
 
-            // Пытаемся загрузить опрос для отображения
             surveyService.getSurveyById(id).ifPresent(survey -> {
                 model.addAttribute("survey", survey);
                 Scenario scenario = getOrCreateDefaultScenario();
                 model.addAttribute("scenario", scenario);
                 model.addAttribute("allowAiQuestions", Boolean.TRUE.equals(scenario.getAllowAiQuestions()));
+                model.addAttribute("allowFileUpload", Boolean.TRUE.equals(scenario.getAllowFileUpload()));
 
                 if (scenario.getDoctorQuestionsText() != null && !scenario.getDoctorQuestionsText().trim().isEmpty()) {
                     model.addAttribute("doctorQuestions", parseQuestions(scenario.getDoctorQuestionsText()));
@@ -331,6 +363,7 @@ public class PatientController {
         scenario.setIsActive(true);
         scenario.setDoctorQuestionsText("");
         scenario.setAllowAiQuestions(false);
+        scenario.setAllowFileUpload(false);
 
         return scenarioRepository.save(scenario);
     }

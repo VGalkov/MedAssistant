@@ -17,7 +17,11 @@ server:
 spring:
   application:
     name: medassistant
-
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 50MB
   datasource:
     # ✅ H2 база данных в ФАЙЛЕ (сохраняется между перезапусками)
     # Путь относительно рабочей директории (для IntelliJ: корень проекта medassistant/)
@@ -68,7 +72,8 @@ lmstudio:
   # Если на другом: http://<IP-адрес>:1234
   base-url: http://10.0.3.10:1234
   # Название модели
-  model: local-model
+  #model: local-model
+  model: medgemma-4b-it
 
 # ===========================================
 # ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ

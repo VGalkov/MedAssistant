@@ -3,7 +3,7 @@
 # ===========================================
 server:
   # Порт приложения (можно менять)
-  port: 8080
+  port: 8090
 
   # Адрес прослушивания:
   # 0.0.0.0 - все сетевые интерфейсы (доступно по сети)
@@ -19,8 +19,9 @@ spring:
     name: medassistant
 
   datasource:
-    # H2 база данных в памяти
-    url: jdbc:h2:mem:medassistant_db
+    # ✅ H2 база данных в ФАЙЛЕ (сохраняется между перезапусками)
+    # Путь относительно рабочей директории (для IntelliJ: корень проекта medassistant/)
+    url: jdbc:h2:file:./data/medassistant_db
     driverClassName: org.h2.Driver
     username: sa
     password:

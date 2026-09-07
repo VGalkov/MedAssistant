@@ -12,7 +12,12 @@ import ru.medassistant.repository.ScenarioRepository;
 import ru.medassistant.service.PromptService;
 import ru.medassistant.service.SurveyService;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/doctor")
@@ -146,5 +151,56 @@ public class DoctorController {
         } catch (Exception e) {
             return "{\"success\": false, \"error\": \"" + e.getMessage() + "\"}";
         }
+    }
+
+    @GetMapping("/prompts/edit")
+    public String editPromptsPage(Model model) {
+        model.addAttribute("prompts", getPromptsMap());
+        model.addAttribute("usingExternalPrompts", promptService.isUsingExternalPrompts());
+        model.addAttribute("promptsDirectory", promptService.getPromptsDirectory());
+        return "doctor/edit-prompts";
+    }
+
+    @PostMapping("/prompts/save")
+    @ResponseBody
+    public String savePrompts(@RequestParam Map<String, String> prompts) {
+        logger.info("=== Saving prompts ===");
+
+        if (!promptService.isUsingExternalPrompts()) {
+            return "{\"success\": false, \"error\": \"Редактирование доступно только при использовании внешнего каталога промптов\"}";
+        }
+
+        try {
+            Path promptsDir = Paths.get("prompts");
+            if (!Files.exists(promptsDir)) {
+                Files.createDirectory(promptsDir);
+            }
+
+            for (Map.Entry<String, String> entry : prompts.entrySet()) {
+                String name = entry.getKey();
+                String content = entry.getValue();
+                Path filePath = promptsDir.resolve(name + ".txt");
+                Files.writeString(filePath, content);
+                logger.info("✅ Saved prompt: {}", name);
+            }
+
+            // Очищаем кэш чтобы загрузить новые промпты
+            promptService.clearCache();
+
+            return "{\"success\": true, \"message\": \"Промпты сохранены и перезагружены\"}";
+
+        } catch (Exception e) {
+            logger.error("Error saving prompts", e);
+            return "{\"success\": false, \"error\": \"" + e.getMessage() + "\"}";
+        }
+    }
+
+    private Map<String, String> getPromptsMap() {
+        Map<String, String> prompts = new HashMap<>();
+        prompts.put("process-survey", promptService.getPrompt("process-survey"));
+        prompts.put("recommendations", promptService.getPrompt("recommendations"));
+        prompts.put("suspicion", promptService.getPrompt("suspicion"));
+        prompts.put("ai-questions", promptService.getPrompt("ai-questions"));
+        return prompts;
     }
 }

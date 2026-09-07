@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор промптов - МедАссистент</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .header { background: #1a73e8; color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; }
+        .back-link { color: white; text-decoration: none; opacity: 0.9; }
+        .back-link:hover { opacity: 1; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 30px; }
+        .info-box { background: #fff3e0; border-left: 4px solid #f57c00; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+        .info-box.success { background: #e8f5e9; border-left-color: #4caf50; }
+        .info-box.error { background: #ffebee; border-left-color: #f44336; }
+        .info-box p { margin: 5px 0; }
+        .info-box code { background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+        .tab { padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 14px; }
+        .tab:hover { background: #d0d0d0; }
+        .tab.active { background: #1a73e8; color: white; }
+        .prompt-editor { display: none; }
+        .prompt-editor.active { display: block; }
+        .panel { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .panel-header { padding: 20px; border-bottom: 1px solid #eee; background: #f8f9fa; font-weight: 600; }
+        .panel-content { padding: 20px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #333; }
+        .form-group textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: 'Consolas', 'Monaco', monospace; min-height: 300px; resize: vertical; line-height: 1.6; }
+        .form-group textarea:focus { outline: none; border-color: #1a73e8; }
+        .form-group small { display: block; margin-top: 8px; color: #666; font-size: 13px; }
+        .actions { display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+        .btn { padding: 12px 24px; background: #1a73e8; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+        .btn:hover { background: #1557b0; }
+        .btn-success { background: #34a853; }
+        .btn-success:hover { background: #2d8f47; }
+        .btn-secondary { background: #5f6368; }
+        .btn-secondary:hover { background: #4a4d52; }
+        .btn-warning { background: #f57c00; }
+        .btn-warning:hover { background: #e65100; }
+        .prompt-vars { background: #f5f5f5; padding: 15px; border-radius: 6px; margin-top: 15px; }
+        .prompt-vars h4 { margin-bottom: 10px; color: #555; font-size: 14px; }
+        .prompt-vars code { display: inline-block; background: white; padding: 4px 8px; border-radius: 4px; font-size: 13px; margin: 3px; border: 1px solid #e0e0e0; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 1s linear infinite; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>⚙️ Редактор промптов ИИ</h1>
+    <a href="/doctor" class="back-link">← Назад к списку</a>
+</div>
+
+<div class="container">
+    <div class="info-box" th:classappend="${usingExternalPrompts} ? 'success' : 'error'">
+        <p th:if="${usingExternalPrompts}">
+            ✅ <strong>Внешний каталог промптов:</strong> <code th:text="${promptsDirectory}"></code>
+        </p>
+        <p th:unless="${usingExternalPrompts}">
+            ⚠️ <strong>Промпты внутри JAR</strong> — редактирование невозможно. Создайте каталог <code>prompts/</code> рядом с jar файлом.
+        </p>
+    </div>
+
+    <form id="promptsForm">
+        <div class="tabs">
+            <button type="button" class="tab active" onclick="showTab('process-survey')">📋 Обработка опроса</button>
+            <button type="button" class="tab" onclick="showTab('recommendations')">💡 Рекомендации</button>
+            <button type="button" class="tab" onclick="showTab('suspicion')">🚩 Подозрения</button>
+            <button type="button" class="tab" onclick="showTab('ai-questions')">🤖 ИИ-вопросы</button>
+        </div>
+
+        <!-- Process Survey -->
+        <div id="process-survey" class="prompt-editor active">
+            <div class="panel">
+                <div class="panel-header">📋 Промпт: Обработка опроса пациента</div>
+                <div class="panel-content">
+                    <div class="form-group">
+                        <label for="process-survey-text">Текст промпта:</label>
+                        <textarea id="process-survey-text" name="process-survey" th:text="${prompts['process-survey']}"></textarea>
+                        <small>Используется для структурирования ответов пациента</small>
+                    </div>
+                    <div class="prompt-vars">
+                        <h4>Переменные:</h4>
+                        <code>%s</code> — Текст опроса пациента
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div id="recommendations" class="prompt-editor">
+            <div class="panel">
+                <div class="panel-header">💡 Промпт: Рекомендации врачу</div>
+                <div class="panel-content">
+                    <div class="form-group">
+                        <label for="recommendations-text">Текст промпта:</label>
+                        <textarea id="recommendations-text" name="recommendations" th:text="${prompts['recommendations']}"></textarea>
+                        <small>Генерирует рекомендации для врача на основе анализа</small>
+                    </div>
+                    <div class="prompt-vars">
+                        <h4>Переменные:</h4>
+                        <code>%s</code> (1) — Оригинал ответов пациента<br>
+                        <code>%s</code> (2) — Структурированный анализ<br>
+                        <code>%s</code> (3) — История пациента
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Suspicion -->
+        <div id="suspicion" class="prompt-editor">
+            <div class="panel">
+                <div class="panel-header">🚩 Промпт: Подозрения на недостоверность</div>
+                <div class="panel-content">
+                    <div class="form-group">
+                        <label for="suspicion-text">Текст промпта:</label>
+                        <textarea id="suspicion-text" name="suspicion" th:text="${prompts['suspicion']}"></textarea>
+                        <small>Анализирует ответы на предмет противоречий и неопределённости</small>
+                    </div>
+                    <div class="prompt-vars">
+                        <h4>Переменные:</h4>
+                        <code>%s</code> (1) — Текст пациента<br>
+                        <code>%s</code> (2) — История пациента
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Questions -->
+        <div id="ai-questions" class="prompt-editor">
+            <div class="panel">
+                <div class="panel-header">🤖 Промпт: Генерация ИИ-вопросов</div>
+                <div class="panel-content">
+                    <div class="form-group">
+                        <label for="ai-questions-text">Текст промпта:</label>
+                        <textarea id="ai-questions-text" name="ai-questions" th:text="${prompts['ai-questions']}"></textarea>
+                        <small>Генерирует 3 уточняющих вопроса на основе ответов пациента</small>
+                    </div>
+                    <div class="prompt-vars">
+                        <h4>Переменные:</h4>
+                        <code>%s</code> — Ответы пациента на вопросы доктора
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn btn-success">💾 Сохранить промпты</button>
+            <a href="/doctor" class="btn btn-secondary">Отмена</a>
+            <button type="button" class="btn btn-warning" onclick="resetToDefaults()">🔄 Сбросить к стандартным</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function showTab(tabId) {
+        document.querySelectorAll('.prompt-editor').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    document.getElementById('promptsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span>Сохранение...';
+
+        const formData = new FormData(this);
+        const params = new URLSearchParams();
+        for (let [key, value] of formData.entries()) {
+            params.append(key, value);
+        }
+
+        fetch('/doctor/prompts/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params.toString()
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ ' + data.message);
+            } else {
+                alert('❌ Ошибка: ' + data.error);
+            }
+        })
+        .catch(err => {
+            alert('❌ Ошибка сети: ' + err);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+    });
+
+    function resetToDefaults() {
+        if (confirm('Сбросить все промпты к стандартным значениям?')) {
+            const defaults = {
+                'process-survey': `Проанализируй текст опроса пациента и структурируй информацию по следующим категориям:
+1. Жалобы (основные симптомы, длительность)
+2. Анамнез заболевания (когда началось, как развивалось)
+3. Сопутствующие заболевания
+4. Принимаемые препараты (название, дозировка, режим)
+5. Аллергии
+6. Вредные привычки
+
+Формат вывода (строго следуй этому формату):
+Жалобы: ...
+Длительность: ...
+Препараты: ...
+Аллергии: ...
+Хронические: ...
+
+Текст опроса пациента:
+%s`,
+                'recommendations': `Проанализируй опрос пациента и укажи рекомендации для врача.
+
+Оригинал ответов: %s
+Структурированный анализ: %s
+История пациента: %s
+
+Выведи краткий список рекомендаций для врача (2-5 пунктов).`,
+                'suspicion': `Проанализируй текст ответов пациента на предмет:
+1. Противоречий внутри текста
+2. Противоречий с предыдущей историей
+3. Признаков неопределённости ("наверное", "вроде", "какие-то")
+4. Признаков возможного сокрытия или выдумывания
+
+Текст пациента: %s
+История: %s
+
+Если есть подозрения, перечисли их кратко. Если нет — напиши "Подозрений нет".`,
+                'ai-questions': `Ты — медицинский ИИ-ассистент. Пациент только что ответил на вопросы доктора.
+Проанализируй ответы и сгенерируй РОВНО 3 уточняющих вопроса.
+
+Цели вопросов:
+1. Устранить противоречия в ответах пациента
+2. Запросить уточнения по важным деталям (локализация, интенсивность, длительность симптомов)
+3. Выяснить недостающую информацию для постановки предварительного диагноза
+
+Ответы пациента:
+%s
+
+Требования к вопросам:
+- Каждый вопрос должен быть конкретным и понятным
+- Начинай с заглавной буквы, заканчивай вопросительным знаком
+- Избегай общих фраз, спрашивай о конкретных деталях
+- Не повторяй уже заданные вопросы
+
+Выведи РОВНО 3 вопроса, каждый с новой строки, без нумерации.`
+            };
+
+            document.getElementById('process-survey-text').value = defaults['process-survey'];
+            document.getElementById('recommendations-text').value = defaults['recommendations'];
+            document.getElementById('suspicion-text').value = defaults['suspicion'];
+            document.getElementById('ai-questions-text').value = defaults['ai-questions'];
+
+            alert('✅ Промпты сброшены к стандартным. Нажмите "Сохранить" чтобы применить.');
+        }
+    }
+</script>
+</body>
+</html>

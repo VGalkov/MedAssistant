@@ -39,30 +39,13 @@
         .dropdown-content a:last-child { border-bottom: none; }
         .dropdown-content a:hover { background: #f5f5f5; }
         .dropdown.show .dropdown-content { display: block; }
-
-        /* Modal styles */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
-        .modal.show { display: flex; }
-        .modal-content { background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-header h3 { color: #333; }
-        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
-        .modal-close:hover { color: #333; }
-        .modal-body { margin-bottom: 20px; }
-        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; }
-        .prompt-info { background: #f5f5f5; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
-        .prompt-info p { margin: 5px 0; font-size: 14px; }
-        .prompt-info strong { color: #333; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-        .status-external { background: #e8f5e9; color: #2e7d32; }
-        .status-internal { background: #fff3e0; color: #ef6c00; }
     </style>
 </head>
 <body>
 <div class="header">
     <h1>👨‍⚕️ Панель врача</h1>
     <div class="header-actions">
-        <button onclick="openPromptModal()" class="btn btn-warning">🔄 Промпты</button>
+        <a href="/doctor/prompts/edit" class="btn btn-warning">⚙️ Промпты</a>
         <a href="/doctor/scenario/edit" class="btn btn-primary">✏️ Редактировать вопросы</a>
     </div>
 </div>
@@ -102,31 +85,6 @@
     </div>
 </div>
 
-<!-- Modal for prompts reload -->
-<div id="promptModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>🔄 Перезагрузка промптов</h3>
-            <button class="modal-close" onclick="closePromptModal()">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="prompt-info">
-                <p><strong>Источник промптов:</strong></p>
-                <p id="promptSource">Загрузка...</p>
-                <p style="margin-top: 10px;"><strong>Каталог:</strong></p>
-                <p id="promptDirectory" style="font-family: monospace; font-size: 13px; color: #666;">...</p>
-            </div>
-            <p style="color: #666; font-size: 14px;">
-                ℹ️ Промпты будут перезагружены из внешнего каталога (если существует) или из JAR.
-            </p>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closePromptModal()">Отмена</button>
-            <button class="btn btn-warning" onclick="reloadPrompts()">🔄 Перезагрузить</button>
-        </div>
-    </div>
-</div>
-
 <script>
     function toggleDropdown(btn) {
         document.querySelectorAll('.dropdown').forEach(d => {
@@ -138,59 +96,6 @@
     document.addEventListener('click', function(e) {
         if (!e.target.closest('.dropdown')) {
             document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('show'));
-        }
-    });
-
-    // Prompt modal functions
-    function openPromptModal() {
-        document.getElementById('promptModal').classList.add('show');
-        loadPromptInfo();
-    }
-
-    function closePromptModal() {
-        document.getElementById('promptModal').classList.remove('show');
-    }
-
-    function loadPromptInfo() {
-        fetch('/doctor/prompts/reload', { method: 'POST' })
-            .then(r => r.json())
-            .then(data => {
-                const sourceEl = document.getElementById('promptSource');
-                const dirEl = document.getElementById('promptDirectory');
-
-                if (data.external) {
-                    sourceEl.innerHTML = '<span class="status-badge status-external">✅ Внешний каталог</span>';
-                } else {
-                    sourceEl.innerHTML = '<span class="status-badge status-internal">📦 Внутри JAR</span>';
-                }
-                dirEl.textContent = data.directory;
-            })
-            .catch(err => {
-                console.error('Error loading prompt info:', err);
-                document.getElementById('promptSource').textContent = 'Ошибка загрузки';
-            });
-    }
-
-    function reloadPrompts() {
-        fetch('/doctor/prompts/reload', { method: 'POST' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    alert('✅ ' + data.message + '\n\nИсточник: ' + (data.external ? 'Внешний каталог' : 'JAR') + '\nКаталог: ' + data.directory);
-                    closePromptModal();
-                } else {
-                    alert('❌ Ошибка: ' + data.error);
-                }
-            })
-            .catch(err => {
-                alert('❌ Ошибка сети: ' + err);
-            });
-    }
-
-    // Close modal on outside click
-    document.getElementById('promptModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closePromptModal();
         }
     });
 </script>

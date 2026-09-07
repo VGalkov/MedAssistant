@@ -21,8 +21,9 @@ public class SurveyAnswer {
     @ToString.Exclude
     private Survey survey;
 
+    // ✅ question_id может быть NULL для вопросов доктора/ИИ
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "question_id")
+    @JoinColumn(name = "question_id", nullable = true)
     @ToString.Exclude
     private ScenarioQuestion question;
 

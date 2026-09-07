@@ -189,7 +189,14 @@ public class PatientController {
 
             StringBuilder patientAnswers = new StringBuilder();
             for (SurveyAnswer answer : survey.getAnswers()) {
-                String questionText = answer.getQuestion().getQuestionText();
+                // ✅ ИСПРАВЛЕНО: используем getQuestionText() вместо getQuestion().getQuestionText()
+                String questionText = answer.getQuestionText();
+
+                // Если questionText пуст, пробуем загрузить из question
+                if (questionText == null && answer.getQuestion() != null) {
+                    questionText = answer.getQuestion().getQuestionText();
+                }
+
                 String answerText = answer.getAnswerText();
 
                 if (questionText == null) {
@@ -250,7 +257,7 @@ public class PatientController {
     }
 
     @PostMapping("/survey/{id}/complete")
-    public String completeSurvey(@PathVariable Long id) {
+    public String completeSurvey(@PathVariable Long id, Model model) {
         logger.info("=== Completing survey: {} ===", id);
 
         try {
@@ -258,8 +265,13 @@ public class PatientController {
             if (survey != null) {
                 logger.info("Survey has {} answers before complete", survey.getAnswers().size());
                 for (SurveyAnswer ans : survey.getAnswers()) {
+                    // ✅ ИСПРАВЛЕНО: используем getQuestionText() вместо getQuestion().getQuestionText()
+                    String questionText = ans.getQuestionText();
+                    if (questionText == null && ans.getQuestion() != null) {
+                        questionText = ans.getQuestion().getQuestionText();
+                    }
                     logger.info("  - Question: '{}', Answer: '{}'",
-                            ans.getQuestion().getQuestionText(),
+                            questionText != null ? questionText : "[NULL]",
                             ans.getAnswerText());
                 }
             }
@@ -267,8 +279,26 @@ public class PatientController {
             surveyService.completeSurvey(id);
             logger.info("✓ Survey completed successfully: {}", id);
             return "patient/completed";
+
         } catch (Exception e) {
             logger.error("❌ Error completing survey: {}", id, e);
+
+            // ✅ Добавляем данные в модель для отображения ошибки
+            model.addAttribute("error", "Ошибка завершения опроса: " + e.getMessage());
+            model.addAttribute("surveyId", id);
+
+            // Пытаемся загрузить опрос для отображения
+            surveyService.getSurveyById(id).ifPresent(survey -> {
+                model.addAttribute("survey", survey);
+                Scenario scenario = getOrCreateDefaultScenario();
+                model.addAttribute("scenario", scenario);
+                model.addAttribute("allowAiQuestions", Boolean.TRUE.equals(scenario.getAllowAiQuestions()));
+
+                if (scenario.getDoctorQuestionsText() != null && !scenario.getDoctorQuestionsText().trim().isEmpty()) {
+                    model.addAttribute("doctorQuestions", parseQuestions(scenario.getDoctorQuestionsText()));
+                }
+            });
+
             return "patient/survey";
         }
     }

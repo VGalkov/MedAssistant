@@ -45,11 +45,9 @@ public class SurveyService {
 
     /**
      * Добавляет ответ на вопрос
-     * @param questionId ID вопроса или -1 для вопросов доктора/ИИ
-     * @param questionText текст вопроса (для вопросов доктора/ИИ)
      */
     public void addAnswer(Long surveyId, Long questionId, String answerText, String questionText) {
-        logger.info("addAnswer: surveyId={}, questionId={}, questionText={}, answerLength={}",
+        logger.info("addAnswer: surveyId={}, questionId={}, questionText='{}', answerLength={}",
                 surveyId, questionId, questionText, answerText.length());
 
         Survey survey = surveyRepository.findById(surveyId)
@@ -61,28 +59,25 @@ public class SurveyService {
         answer.setAnsweredAt(LocalDateTime.now());
 
         if (questionId != null && questionId > 0) {
-            // Стандартный вопрос из БД — сохраняем ссылку
+            // Стандартный вопрос — сохраняем ID, текст загрузится из БД
             ScenarioQuestion question = new ScenarioQuestion();
             question.setId(questionId);
             answer.setQuestion(question);
-            answer.setQuestionText(null); // Будет загружено из БД при чтении
+            answer.setQuestionText(null);
             logger.info("Answer linked to question ID: {}", questionId);
         } else {
-            // Вопрос доктора или ИИ — сохраняем текст напрямую
+            // Вопрос доктора/ИИ — сохраняем текст напрямую
             answer.setQuestion(null);
             answer.setQuestionText(questionText != null ? questionText : "Вопрос");
-            logger.info("Answer saved with questionText: {}", answer.getQuestionText());
+            logger.info("Answer saved with questionText: '{}'", answer.getQuestionText());
         }
 
         survey.getAnswers().add(answer);
         surveyRepository.save(survey);
 
-        logger.info("Answer saved. Total answers in survey: {}", survey.getAnswers().size());
+        logger.info("✓ Answer saved. Total answers: {}", survey.getAnswers().size());
     }
 
-    /**
-     * Перегруженная версия для обратной совместимости
-     */
     public void addAnswer(Long surveyId, Long questionId, String answerText) {
         addAnswer(surveyId, questionId, answerText, null);
     }
@@ -90,28 +85,41 @@ public class SurveyService {
     public Survey completeSurvey(Long surveyId) {
         logger.info("=== completeSurvey: {} ===", surveyId);
 
-        Survey survey = surveyRepository.findById(surveyId)
-                .orElseThrow(() -> new RuntimeException("Опрос не найден"));
+        // Загружаем опрос с ответами
+        Survey survey = surveyRepository.findByIdWithAnswers(surveyId)
+                .orElseThrow(() -> new RuntimeException("Опрос не найден: " + surveyId));
 
-        logger.info("Survey has {} answers", survey.getAnswers().size());
+        logger.info("Survey loaded with {} answers", survey.getAnswers().size());
 
         StringBuilder originalText = new StringBuilder();
+        int answerNum = 0;
+
         for (SurveyAnswer answer : survey.getAnswers()) {
-            // Сначала пробуем получить текст из поля questionText
+            answerNum++;
+
+            // Читаем текст вопроса: сначала из поля questionText, потом из question
             String questionText = answer.getQuestionText();
 
-            // Если пусто, пробуем загрузить из question
             if (questionText == null && answer.getQuestion() != null) {
-                questionText = answer.getQuestion().getQuestionText();
+                // Пробуем загрузить вопрос из БД
+                try {
+                    questionText = answer.getQuestion().getQuestionText();
+                    logger.info("Answer {}: Loaded questionText from question entity: '{}'",
+                            answerNum, questionText);
+                } catch (Exception e) {
+                    logger.warn("Answer {}: Failed to load questionText from question entity", answerNum, e);
+                }
             }
 
             String answerText = answer.getAnswerText();
 
-            logger.info("Answer: questionText='{}', answerLength={}",
-                    questionText, answerText != null ? answerText.length() : 0);
+            logger.info("Answer {}: questionText='{}', answerLength={}",
+                    answerNum,
+                    questionText != null ? questionText : "[NULL]",
+                    answerText != null ? answerText.length() : 0);
 
-            if (questionText == null) {
-                questionText = "[Вопрос не указан]";
+            if (questionText == null || questionText.trim().isEmpty()) {
+                questionText = "[Вопрос #" + answerNum + "]";
             }
             if (answerText == null) {
                 answerText = "[Нет ответа]";
@@ -124,8 +132,12 @@ public class SurveyService {
         }
 
         String originalTextStr = originalText.toString();
-        logger.info("Original text ({} chars): {}", originalTextStr.length(),
-                originalTextStr.substring(0, Math.min(200, originalTextStr.length())));
+        logger.info("=== Original text ({} chars) ===", originalTextStr.length());
+        logger.info("{}", originalTextStr.substring(0, Math.min(500, originalTextStr.length())));
+
+        if (originalTextStr.trim().isEmpty()) {
+            logger.error("❌ ERROR: originalText is EMPTY! Answers were not saved correctly.");
+        }
 
         survey.setOriginalText(originalTextStr);
         survey.setStatus("COMPLETED");
@@ -197,12 +209,9 @@ public class SurveyService {
     }
 
     public Optional<Survey> getSurveyById(Long surveyId) {
-        return surveyRepository.findById(surveyId);
+        return surveyRepository.findByIdWithAnswers(surveyId);
     }
 
-    /**
-     * Сохранение опроса
-     */
     public void saveSurvey(Survey survey) {
         surveyRepository.save(survey);
     }

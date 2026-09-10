@@ -151,8 +151,8 @@ public class LmStudioService {
             requestBody.put("messages", List.of(
                     Map.of("role", "user", "content", prompt)
             ));
-            requestBody.put("max_tokens", 300);
-            requestBody.put("temperature", 0.3);
+            requestBody.put("max_tokens", 500);
+            requestBody.put("temperature", 0.7);
 
             ResponseEntity<String> response = restTemplate.postForEntity(
                     lmStudioBaseUrl + "/v1/chat/completions",
@@ -199,7 +199,7 @@ public class LmStudioService {
             requestBody.put("messages", List.of(
                     Map.of("role", "user", "content", prompt)
             ));
-            requestBody.put("max_tokens", 300);
+            requestBody.put("max_tokens", 500);
             requestBody.put("temperature", 0.7);
 
             ResponseEntity<String> response = restTemplate.postForEntity(
